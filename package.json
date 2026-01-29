@@ -12,7 +12,7 @@
     "url": "https://github.com/Melon-Technologies/get-face-status.git"
   },
   "scripts": {
-    "build": "npm run build:all",
+    "build": "npm run build:all && mkdir -p public && cp index.html public/ && cp -r examples public/ && cp -r dist public/",
     "build:all": "npm run build:library && npm run build:bundle && npm run build:min",
     "build:library": "tsc src/index.ts --declaration --outDir dist/",
     "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/get_face_status.js",
