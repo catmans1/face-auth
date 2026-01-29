@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Face Comparison Demo - Melon API</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🎭 Face Comparison Demo</h1>
+        <p class="subtitle">
+          Powered by Melon Face Recognition API & get-face-status
+        </p>
+      </header>
+
+      <div class="main-grid">
+        <!-- Registration Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">📝</span>
+            <h2 class="panel-title">Face Registration</h2>
+          </div>
+
+          <div class="video-container">
+            <video id="video-register" autoplay playsinline></video>
+            <canvas id="canvas-register"></canvas>
+            <div id="status-register" class="status-overlay">
+              Initializing camera...
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="display-name">Display Name</label>
+            <input
+              type="text"
+              id="display-name"
+              placeholder="Enter your name"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="gallery-name">Gallery Name (Optional)</label>
+            <input
+              type="text"
+              id="gallery-name"
+              placeholder="e.g., office-team"
+              autocomplete="off"
+            />
+          </div>
+
+          <button id="btn-register" class="btn" disabled>
+            Register Face
+          </button>
+
+          <div id="register-result"></div>
+        </div>
+
+        <!-- Authentication Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">🔐</span>
+            <h2 class="panel-title">Face Authentication</h2>
+          </div>
+
+          <div class="info-box">
+            <strong>Note:</strong> Device registration is required only once.
+            After that, you can authenticate multiple times.
+          </div>
+
+          <div class="video-container">
+            <video id="video-auth" autoplay playsinline></video>
+            <canvas id="canvas-auth"></canvas>
+            <div id="status-auth" class="status-overlay">
+              Initializing camera...
+            </div>
+          </div>
+
+          <button id="btn-register-device" class="btn btn-secondary">
+            Register Device
+          </button>
+
+          <button
+            id="btn-authenticate"
+            class="btn"
+            disabled
+            style="margin-top: 1rem"
+          >
+            Authenticate
+          </button>
+
+          <div id="auth-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="index.js"></script>
+  </body>
+</html>

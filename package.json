@@ -1,0 +1,29 @@
+{
+  "name": "@melon-technologies/get-face-status",
+  "version": "0.2.0",
+  "description": "A face detection module that finds the best face and status ",
+  "keywords": [
+    "face-detection"
+  ],
+  "license": "CC BY-NC-ND 4.0",
+  "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Melon-Technologies/get-face-status.git"
+  },
+  "scripts": {
+    "build:all": "npm run build:library && npm run build:bundle && npm run build:min",
+    "build:library": "tsc src/index.ts --declaration --outDir dist/",
+    "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/get_face_status.js",
+    "build:min": "esbuild src/index.ts --bundle --minify --outfile=dist/get_face_status.min.js",
+    "lint": "tsc src/index.ts --noEmit",
+    "test": "vitest run --dir test --coverage"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^0.34.6",
+    "esbuild": "^0.19.5",
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.6"
+  },
+  "jsdelivr": "./dist/get_face_status.js"
+}

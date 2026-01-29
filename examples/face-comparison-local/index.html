@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Local Face Comparison - Upload & Compare</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>📸 Local Face Comparison</h1>
+        <p class="subtitle">
+          Upload a photo and compare it with your webcam in real-time
+        </p>
+      </header>
+
+      <div class="main-grid">
+        <!-- Upload Reference Photo Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">🖼️</span>
+            <h2 class="panel-title">Reference Photo</h2>
+          </div>
+
+          <div class="upload-area" id="upload-area">
+            <input
+              type="file"
+              id="photo-upload"
+              accept="image/*"
+              style="display: none"
+            />
+            <div class="upload-placeholder" id="upload-placeholder">
+              <div class="upload-icon">📁</div>
+              <p>Click to upload or drag & drop</p>
+              <p class="upload-hint">Supported: JPG, PNG, WEBP</p>
+            </div>
+            <canvas id="canvas-reference" style="display: none"></canvas>
+            <div id="reference-status" class="status-overlay" style="display: none">
+              Processing...
+            </div>
+          </div>
+
+          <button id="btn-clear-reference" class="btn btn-secondary" style="display: none">
+            Clear Photo
+          </button>
+
+          <div id="reference-result"></div>
+        </div>
+
+        <!-- Webcam Comparison Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">🎥</span>
+            <h2 class="panel-title">Live Webcam</h2>
+          </div>
+
+          <div class="info-box">
+            <strong>How it works:</strong> Upload a reference photo, then the
+            system will compare it with your webcam feed in real-time.
+          </div>
+
+          <div class="threshold-control">
+            <label for="threshold-slider">
+              Match Threshold: <span id="threshold-value">40</span>%
+            </label>
+            <input
+              type="range"
+              id="threshold-slider"
+              min="10"
+              max="80"
+              value="40"
+              step="5"
+            />
+            <div class="threshold-labels">
+              <span>Strict</span>
+              <span>Balanced</span>
+              <span>Lenient</span>
+            </div>
+          </div>
+
+          <div class="video-container">
+            <video id="video-webcam" autoplay playsinline></video>
+            <canvas id="canvas-webcam"></canvas>
+            <div id="status-webcam" class="status-overlay">
+              Initializing camera...
+            </div>
+          </div>
+
+          <div id="comparison-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="index.js"></script>
+  </body>
+</html>
