@@ -50,6 +50,7 @@ function loadDeviceInfo() {
   if (stored) {
     deviceInfo = JSON.parse(stored);
     updateDeviceUI();
+    startAutoAuth();
   }
 }
 
@@ -404,12 +405,16 @@ async function authenticate() {
     console.error("Authentication error:", error);
 
     if (error.status === 422) {
-      statusAuth.textContent = error.message ? error.message.trim() : "Face quality issue";
+      const msg = error.message ? error.message.trim() : "Face quality issue";
+      statusAuth.textContent = msg;
       statusAuth.className = "status-overlay warning";
+
+      showResult(authResult, false, "Authentication Feedback", {
+        Message: msg,
+      });
     } else {
       statusAuth.textContent = "Authentication failed (Retrying...)";
     }
-    // Don't show full error UI on auto-retry to avoid flicker/spam
   } finally {
     isAuthRunning = false;
   }
@@ -430,9 +435,7 @@ function startAutoAuth() {
 }
 
 // Start auto-auth when device is ready
-if (deviceInfo) {
-  startAutoAuth();
-}
+// (Moved to loadDeviceInfo)
 
 // Update device registration to start auto-auth
 // (Modify btnRegisterDevice listener below)
