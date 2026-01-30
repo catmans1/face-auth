@@ -41,8 +41,18 @@ export class MelonApiClient {
     };
 
     const now = Math.floor(Date.now() / 1000);
+    // Parse hostname for audience (document requires hostname only, no path)
+    let audience: string;
+    try {
+      const url = new URL(this.config.apiEndpoint);
+      audience = url.host;
+    } catch {
+      // Fallback if URL parsing fails
+      audience = this.config.apiEndpoint.replace(/^https?:\/\//, "").split("/")[0];
+    }
+
     const payload = {
-      aud: [this.config.apiEndpoint.replace("https://", "")],
+      aud: [audience],
       sub: this.config.subject,
       iat: now,
       exp: now + 3600, // 1 hour expiration
