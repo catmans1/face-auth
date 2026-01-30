@@ -310,6 +310,7 @@ btnRegisterDevice.addEventListener("click", async () => {
 
     statusAuth.textContent = "Generating device key...";
     const keyResponse = await melonClient.createDeviceKey(deviceResponse.uuid);
+    console.log("Device Key Response:", keyResponse); // Debug logs
 
     saveDeviceInfo({
       uuid: deviceResponse.uuid,
