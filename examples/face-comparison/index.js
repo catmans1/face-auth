@@ -326,6 +326,9 @@ btnRegisterDevice.addEventListener("click", async () => {
       "Key ID": keyResponse.uuid,
       Gallery: galleryName,
     });
+
+    // Start auto-authentication
+    startAutoAuth();
   } catch (error) {
     console.error("Device registration error:", error);
     statusAuth.textContent = "Device registration failed";
@@ -338,22 +341,20 @@ btnRegisterDevice.addEventListener("click", async () => {
   }
 });
 
-// Authenticate
-btnAuthenticate.addEventListener("click", async () => {
-  if (!deviceInfo) {
-    alert("Please register device first");
-    return;
-  }
+// Auto-Authentication Loop
+let isAuthRunning = false;
+let autoAuthTimer = null;
 
-  btnAuthenticate.classList.add("loading");
-  btnAuthenticate.disabled = true;
+async function authenticate() {
+  if (!deviceInfo || isAuthRunning) return;
+
+  isAuthRunning = true;
+  statusAuth.textContent = "Auto-authenticating...";
   authResult.innerHTML = "";
 
   try {
-    statusAuth.textContent = "Capturing face...";
     const imageBlob = await captureImage(videoAuth, canvasAuth);
 
-    statusAuth.textContent = "Matching face...";
     const matchResponse = await melonClient.matchFace(
       imageBlob,
       deviceInfo.keyId,
@@ -401,15 +402,34 @@ btnAuthenticate.addEventListener("click", async () => {
     }
   } catch (error) {
     console.error("Authentication error:", error);
-    statusAuth.textContent = "Authentication failed";
-    showResult(authResult, false, "Authentication Failed", {
-      Error: error.message || error.error || "Unknown error",
-    });
+    statusAuth.textContent = "Authentication failed (Retrying...)";
+    // Don't show full error UI on auto-retry to avoid flicker/spam
   } finally {
-    btnAuthenticate.classList.remove("loading");
-    btnAuthenticate.disabled = !deviceInfo;
+    isAuthRunning = false;
   }
-});
+}
+
+function startAutoAuth() {
+  if (autoAuthTimer) clearTimeout(autoAuthTimer);
+
+  const loop = async () => {
+    if (deviceInfo) {
+      await authenticate();
+    }
+    // Schedule next run
+    autoAuthTimer = setTimeout(loop, 5000);
+  };
+
+  loop();
+}
+
+// Start auto-auth when device is ready
+if (deviceInfo) {
+  startAutoAuth();
+}
+
+// Update device registration to start auto-auth
+// (Modify btnRegisterDevice listener below)
 
 // Enable register button when name is entered
 displayNameInput.addEventListener("input", () => {
