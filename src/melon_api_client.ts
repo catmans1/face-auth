@@ -66,7 +66,9 @@ export class MelonApiClient {
     const signatureInput = `${encodedHeader}.${encodedPayload}`;
     const signature = await this.hmacSHA256(signatureInput, secret);
 
-    return `${signatureInput}.${signature}`;
+    const token = `${signatureInput}.${signature}`;
+    console.log("Generated JWT:", token);
+    return token;
   }
 
   /**
