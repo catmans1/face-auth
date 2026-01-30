@@ -103,7 +103,8 @@ export interface DeviceKey {
 
 export interface CreateDeviceKeyResponse {
   uuid: string;
-  key: string;
+  secret: string;
+  created?: number;
 }
 
 export interface MatchResult {

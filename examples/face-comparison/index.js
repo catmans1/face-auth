@@ -316,7 +316,7 @@ btnRegisterDevice.addEventListener("click", async () => {
       uuid: deviceResponse.uuid,
       displayName: deviceResponse.display_name,
       keyId: keyResponse.uuid,
-      secretKey: keyResponse.key,
+      secretKey: keyResponse.secret, // Fixed: API returns 'secret', not 'key'
       gallery: galleryName,
     });
 
