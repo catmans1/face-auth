@@ -54,7 +54,7 @@ export class MelonApiClient {
     const payload = {
       aud: [audience],
       sub: this.config.subject,
-      iat: now,
+      iat: now - 30, // 30 seconds back for clock skew
       exp: now + 3600, // 1 hour expiration
     };
 
