@@ -9,7 +9,8 @@ export { FaceStatus };
 export type { Face };
 
 // Export Melon API Client
-export { MelonApiClient } from "./melon_api_client";
+import { MelonApiClient } from "./melon_api_client";
+export { MelonApiClient };
 export type * from "./melon_types";
 
 export function getFaceStatus(faces: any, shape: Shape, options = {}) {
@@ -61,5 +62,6 @@ if (typeof window !== "undefined") {
   (window as any).mt = {
     getFaceStatus: getFaceStatus,
     FaceStatus: FaceStatus,
+    MelonApiClient: MelonApiClient,
   };
 }

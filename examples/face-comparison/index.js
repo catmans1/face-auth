@@ -5,7 +5,7 @@ import "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection";
 import "../../dist/get_face_status.js";
 
 // Import Melon API Client (we'll use it as a module)
-import { MelonApiClient } from "../../dist/index.js";
+// import { MelonApiClient } from "../../dist/index.js";
 
 // Configuration
 const MELON_CONFIG = {
@@ -19,7 +19,7 @@ const FPS = 25;
 const MATCH_THRESHOLD = 0.5;
 
 // Initialize Melon API Client
-const melonClient = new MelonApiClient(MELON_CONFIG);
+const melonClient = new mt.MelonApiClient(MELON_CONFIG);
 
 // DOM Elements - Registration
 const videoRegister = document.getElementById("video-register");
