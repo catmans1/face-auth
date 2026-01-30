@@ -402,7 +402,13 @@ async function authenticate() {
     }
   } catch (error) {
     console.error("Authentication error:", error);
-    statusAuth.textContent = "Authentication failed (Retrying...)";
+
+    if (error.status === 422) {
+      statusAuth.textContent = error.message ? error.message.trim() : "Face quality issue";
+      statusAuth.className = "status-overlay warning";
+    } else {
+      statusAuth.textContent = "Authentication failed (Retrying...)";
+    }
     // Don't show full error UI on auto-retry to avoid flicker/spam
   } finally {
     isAuthRunning = false;
