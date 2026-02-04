@@ -12,8 +12,8 @@ const MELON_CONFIG = {
   subject: "teacher",
 };
 
-const FPS = 25;
 const MATCH_THRESHOLD = 0.5;
+const DEFAULT_GALLERY = "default-gallery";
 
 // Initialize Melon API Client
 const melonClient = new mt.MelonApiClient(MELON_CONFIG);
@@ -25,11 +25,6 @@ const uploadPlaceholderRegister = document.getElementById("upload-placeholder-re
 const canvasUploadRegister = document.getElementById("canvas-upload-register");
 const uploadStatusRegister = document.getElementById("upload-status-register");
 const btnClearUploadRegister = document.getElementById("btn-clear-upload-register");
-
-// DOM Elements - Registration (Form)
-const displayNameInput = document.getElementById("display-name");
-const galleryNameInput = document.getElementById("gallery-name");
-const btnRegister = document.getElementById("btn-register");
 const registerResult = document.getElementById("register-result");
 
 // DOM Elements - Authentication (Camera Only)
@@ -48,17 +43,12 @@ let detectorAuth = null;
 let currentUserUuid = null;
 let deviceInfo = null;
 
-// Uploaded image for registration
-let uploadedImageRegister = null;
-let uploadedFaceStatusRegister = null;
-
 // Load device info from localStorage
 function loadDeviceInfo() {
   const stored = localStorage.getItem("melonDeviceInfo");
   if (stored) {
     deviceInfo = JSON.parse(stored);
     updateDeviceUI();
-    startAutoAuth();
   }
 }
 
@@ -184,14 +174,13 @@ function showResult(container, success, title, data) {
   container.innerHTML = html;
 }
 
-// Update register button state
-function updateRegisterButtonState() {
-  const hasName = displayNameInput.value.trim();
-  btnRegister.disabled = !(uploadedFaceStatusRegister === mt.FaceStatus.OK && hasName);
+// Generate auto name for user
+function generateUserName() {
+  return `user-${Date.now()}`;
 }
 
 // =====================================================
-// Upload Handling for Registration (Sends to Melon Server)
+// Upload Handling for Registration (Auto-sends to Melon Server)
 // =====================================================
 
 async function processUploadedImageRegister(file) {
@@ -222,8 +211,6 @@ async function processUploadedImageRegister(file) {
     if (faces.length === 0) {
       uploadStatusRegister.textContent = "No face detected";
       uploadStatusRegister.classList.add("error");
-      uploadedFaceStatusRegister = null;
-      uploadedImageRegister = null;
       showResult(registerResult, false, "No Face Detected", {
         Message: "Please upload an image with a clear face",
       });
@@ -234,8 +221,6 @@ async function processUploadedImageRegister(file) {
     const shape = { width: canvasUploadRegister.width, height: canvasUploadRegister.height };
     const options = { detectorType: "mediapipe" };
     const { status, face } = mt.getFaceStatus(faces, shape, options);
-
-    uploadedFaceStatusRegister = status;
 
     // Draw face box
     if (face) {
@@ -261,7 +246,6 @@ async function processUploadedImageRegister(file) {
     if (status !== mt.FaceStatus.OK) {
       uploadStatusRegister.textContent = `Face issue: ${mt.FaceStatus[status]}`;
       uploadStatusRegister.classList.add("warning");
-      uploadedImageRegister = null;
       showResult(registerResult, false, "Face Quality Issue", {
         Status: mt.FaceStatus[status],
         Message: "Please upload an image with better face quality",
@@ -271,24 +255,14 @@ async function processUploadedImageRegister(file) {
 
     // Convert canvas to blob
     const imageBlob = await canvasToBlob(canvasUploadRegister);
-    uploadedImageRegister = imageBlob;
-
-    // Check if we have the display name to proceed with registration
-    const displayName = displayNameInput.value.trim();
-    if (!displayName) {
-      uploadStatusRegister.textContent = "Face detected - Enter name to register";
-      uploadStatusRegister.classList.add("ok");
-      updateRegisterButtonState();
-      return true;
-    }
 
     // =====================================================
-    // Send to Melon Server
+    // Send to Melon Server (Auto-registration)
     // =====================================================
 
-    const galleryName = galleryNameInput.value.trim() || "default-gallery";
+    const displayName = generateUserName();
 
-    // Step 1: Create user
+    // Step 1: Create user on server
     uploadStatusRegister.textContent = "Creating user on server...";
     const userResponse = await melonClient.createUser(displayName);
     currentUserUuid = userResponse.uuid;
@@ -304,7 +278,7 @@ async function processUploadedImageRegister(file) {
     const validThrough = now + 365 * 24 * 60 * 60; // 1 year
 
     await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
-      gallery: galleryName,
+      gallery: DEFAULT_GALLERY,
     });
 
     // Success
@@ -312,8 +286,6 @@ async function processUploadedImageRegister(file) {
     uploadStatusRegister.className = "status-overlay ok";
     showResult(registerResult, true, "Registration Successful", {
       "User UUID": currentUserUuid,
-      "Display Name": displayName,
-      Gallery: galleryName,
     });
 
     return true;
@@ -322,8 +294,6 @@ async function processUploadedImageRegister(file) {
     console.error("Registration error:", error);
     uploadStatusRegister.textContent = "Registration failed";
     uploadStatusRegister.classList.add("error");
-    uploadedFaceStatusRegister = null;
-    uploadedImageRegister = null;
     showResult(registerResult, false, "Registration Failed", {
       Error: error.message || error.error || "Unknown error",
     });
@@ -386,8 +356,6 @@ photoUploadRegister.addEventListener("change", async (e) => {
 
 btnClearUploadRegister.addEventListener("click", (e) => {
   e.stopPropagation();
-  uploadedImageRegister = null;
-  uploadedFaceStatusRegister = null;
 
   uploadPlaceholderRegister.style.display = "flex";
   canvasUploadRegister.style.display = "none";
@@ -396,78 +364,6 @@ btnClearUploadRegister.addEventListener("click", (e) => {
 
   registerResult.innerHTML = "";
   photoUploadRegister.value = "";
-  updateRegisterButtonState();
-});
-
-// Enable register button when name is entered
-displayNameInput.addEventListener("input", () => {
-  updateRegisterButtonState();
-});
-
-// =====================================================
-// Registration Button (for when name is entered after upload)
-// =====================================================
-
-btnRegister.addEventListener("click", async () => {
-  if (!uploadedImageRegister) {
-    showResult(registerResult, false, "No Image", {
-      Message: "Please upload an image first",
-    });
-    return;
-  }
-
-  const displayName = displayNameInput.value.trim();
-  if (!displayName) {
-    showResult(registerResult, false, "No Name", {
-      Message: "Please enter a display name",
-    });
-    return;
-  }
-
-  btnRegister.classList.add("loading");
-  btnRegister.disabled = true;
-  registerResult.innerHTML = "";
-
-  try {
-    const galleryName = galleryNameInput.value.trim() || "default-gallery";
-
-    // Step 1: Create user on server
-    uploadStatusRegister.textContent = "Creating user on server...";
-    const userResponse = await melonClient.createUser(displayName);
-    currentUserUuid = userResponse.uuid;
-
-    // Step 2: Upload face to server
-    uploadStatusRegister.textContent = "Uploading face to server...";
-    await melonClient.registerFace(currentUserUuid, uploadedImageRegister);
-
-    // Step 3: Create token
-    uploadStatusRegister.textContent = "Creating access token...";
-    const now = Math.floor(Date.now() / 1000);
-    const validFrom = now;
-    const validThrough = now + 365 * 24 * 60 * 60; // 1 year
-
-    await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
-      gallery: galleryName,
-    });
-
-    uploadStatusRegister.textContent = "Registration complete!";
-    uploadStatusRegister.className = "status-overlay ok";
-    showResult(registerResult, true, "Registration Successful", {
-      "User UUID": currentUserUuid,
-      "Display Name": displayName,
-      Gallery: galleryName,
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    uploadStatusRegister.textContent = "Registration failed";
-    uploadStatusRegister.className = "status-overlay error";
-    showResult(registerResult, false, "Registration Failed", {
-      Error: error.message || error.error || "Unknown error",
-    });
-  } finally {
-    btnRegister.classList.remove("loading");
-    updateRegisterButtonState();
-  }
 });
 
 // =====================================================
@@ -511,12 +407,11 @@ btnRegisterDevice.addEventListener("click", async () => {
   authResult.innerHTML = "";
 
   try {
-    const galleryName = galleryNameInput.value.trim() || "default-gallery";
     const deviceName = `device-${Date.now()}`;
 
     statusAuth.textContent = "Registering device...";
     const deviceResponse = await melonClient.createDevice(deviceName, {
-      gallery: galleryName,
+      gallery: DEFAULT_GALLERY,
     });
 
     statusAuth.textContent = "Generating device key...";
@@ -528,18 +423,15 @@ btnRegisterDevice.addEventListener("click", async () => {
       displayName: deviceResponse.display_name,
       keyId: keyResponse.uuid,
       secretKey: keyResponse.secret,
-      gallery: galleryName,
+      gallery: DEFAULT_GALLERY,
     });
 
     statusAuth.textContent = "Device registered!";
     showResult(authResult, true, "Device Registration Successful", {
       "Device UUID": deviceResponse.uuid,
       "Key ID": keyResponse.uuid,
-      Gallery: galleryName,
     });
 
-    // Start auto-authentication
-    startAutoAuth();
   } catch (error) {
     console.error("Device registration error:", error);
     statusAuth.textContent = "Device registration failed";
@@ -552,9 +444,8 @@ btnRegisterDevice.addEventListener("click", async () => {
   }
 });
 
-// Auto-Authentication Loop
+// Authentication
 let isAuthRunning = false;
-let autoAuthTimer = null;
 
 async function authenticate() {
   if (!deviceInfo || isAuthRunning) return;
@@ -625,26 +516,12 @@ async function authenticate() {
         Message: msg,
       });
     } else {
-      statusAuth.textContent = "Authentication failed (Retrying...)";
+      statusAuth.textContent = "Authentication failed";
+      statusAuth.className = "status-overlay error";
     }
   } finally {
     isAuthRunning = false;
   }
-}
-
-function startAutoAuth() {
-  return
-  if (autoAuthTimer) clearTimeout(autoAuthTimer);
-
-  const loop = async () => {
-    if (deviceInfo) {
-      await authenticate();
-    }
-    // Schedule next run
-    autoAuthTimer = setTimeout(loop, 5000);
-  };
-
-  loop();
 }
 
 // Manual authenticate button click
