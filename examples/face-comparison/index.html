@@ -30,13 +30,28 @@
             <h2 class="panel-title">Face Registration</h2>
           </div>
 
-          <div class="video-container">
-            <video id="video-register" autoplay playsinline></video>
-            <canvas id="canvas-register"></canvas>
-            <div id="status-register" class="status-overlay">
-              Initializing camera...
+          <!-- Upload Input -->
+          <div id="upload-container-register" class="upload-area">
+            <input
+              type="file"
+              id="photo-upload-register"
+              accept="image/*"
+              style="display: none"
+            />
+            <div class="upload-placeholder" id="upload-placeholder-register">
+              <div class="upload-icon">📁</div>
+              <p>Click to upload or drag & drop</p>
+              <p class="upload-hint">Supported: JPG, PNG, WEBP</p>
+            </div>
+            <canvas id="canvas-upload-register" style="display: none"></canvas>
+            <div id="upload-status-register" class="status-overlay" style="display: none">
+              Processing...
             </div>
           </div>
+
+          <button id="btn-clear-upload-register" class="btn btn-secondary" style="display: none; margin-bottom: 1rem;">
+            Clear Photo
+          </button>
 
           <div class="form-group">
             <label for="display-name">Display Name</label>
@@ -77,7 +92,8 @@
             After that, you can authenticate multiple times.
           </div>
 
-          <div class="video-container">
+          <!-- Camera Input -->
+          <div id="camera-container-auth" class="video-container">
             <video id="video-auth" autoplay playsinline></video>
             <canvas id="canvas-auth"></canvas>
             <div id="status-auth" class="status-overlay">

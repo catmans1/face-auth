@@ -4,9 +4,6 @@ import "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl";
 import "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection";
 import "../../dist/get_face_status.js";
 
-// Import Melon API Client (we'll use it as a module)
-// import { MelonApiClient } from "../../dist/index.js";
-
 // Configuration
 const MELON_CONFIG = {
   apiEndpoint: "https://api-beta.melon.co.jp/v2",
@@ -21,19 +18,26 @@ const MATCH_THRESHOLD = 0.5;
 // Initialize Melon API Client
 const melonClient = new mt.MelonApiClient(MELON_CONFIG);
 
-// DOM Elements - Registration
-const videoRegister = document.getElementById("video-register");
-const canvasRegister = document.getElementById("canvas-register");
-const statusRegister = document.getElementById("status-register");
+// DOM Elements - Registration (Upload Only)
+const uploadContainerRegister = document.getElementById("upload-container-register");
+const photoUploadRegister = document.getElementById("photo-upload-register");
+const uploadPlaceholderRegister = document.getElementById("upload-placeholder-register");
+const canvasUploadRegister = document.getElementById("canvas-upload-register");
+const uploadStatusRegister = document.getElementById("upload-status-register");
+const btnClearUploadRegister = document.getElementById("btn-clear-upload-register");
+
+// DOM Elements - Registration (Form)
 const displayNameInput = document.getElementById("display-name");
 const galleryNameInput = document.getElementById("gallery-name");
 const btnRegister = document.getElementById("btn-register");
 const registerResult = document.getElementById("register-result");
 
-// DOM Elements - Authentication
+// DOM Elements - Authentication (Camera Only)
 const videoAuth = document.getElementById("video-auth");
 const canvasAuth = document.getElementById("canvas-auth");
 const statusAuth = document.getElementById("status-auth");
+
+// DOM Elements - Authentication (Buttons)
 const btnRegisterDevice = document.getElementById("btn-register-device");
 const btnAuthenticate = document.getElementById("btn-authenticate");
 const authResult = document.getElementById("auth-result");
@@ -43,6 +47,10 @@ let detectorRegister = null;
 let detectorAuth = null;
 let currentUserUuid = null;
 let deviceInfo = null;
+
+// Uploaded image for registration
+let uploadedImageRegister = null;
+let uploadedFaceStatusRegister = null;
 
 // Load device info from localStorage
 function loadDeviceInfo() {
@@ -176,43 +184,295 @@ function showResult(container, success, title, data) {
   container.innerHTML = html;
 }
 
-// Registration detection loop
-async function startRegistrationDetection() {
-  const ctx = canvasRegister.getContext("2d");
+// Update register button state
+function updateRegisterButtonState() {
+  const hasName = displayNameInput.value.trim();
+  btnRegister.disabled = !(uploadedFaceStatusRegister === mt.FaceStatus.OK && hasName);
+}
 
-  const detect = async () => {
-    try {
-      const estimationConfig = { flipHorizontal: false };
-      const faces = await detectorRegister.estimateFaces(
-        videoRegister,
-        estimationConfig
-      );
+// =====================================================
+// Upload Handling for Registration (Sends to Melon Server)
+// =====================================================
 
-      const shape = {
-        width: videoRegister.videoWidth,
-        height: videoRegister.videoHeight,
-      };
-      const options = { detectorType: "mediapipe" };
-      const { status, face } = mt.getFaceStatus(faces, shape, options);
+async function processUploadedImageRegister(file) {
+  // Show canvas, hide placeholder
+  uploadPlaceholderRegister.style.display = "none";
+  canvasUploadRegister.style.display = "block";
+  uploadStatusRegister.style.display = "block";
+  btnClearUploadRegister.style.display = "block";
 
-      statusRegister.textContent = mt.FaceStatus[status];
-      updateStatus(statusRegister, "info", status);
+  uploadStatusRegister.textContent = "Loading image...";
+  uploadStatusRegister.className = "status-overlay";
+  registerResult.innerHTML = "";
 
-      drawFace(ctx, face, canvasRegister);
+  try {
+    // Load image
+    const img = await loadImage(file);
 
-      // Enable register button only if face is OK and name is entered
-      btnRegister.disabled = !(
-        status === mt.FaceStatus.OK && displayNameInput.value.trim()
-      );
-    } catch (error) {
-      console.error("Detection error:", error);
+    // Draw image on canvas
+    const ctx = canvasUploadRegister.getContext("2d");
+    canvasUploadRegister.width = img.width;
+    canvasUploadRegister.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    // Detect face locally first
+    uploadStatusRegister.textContent = "Detecting face...";
+    const faces = await detectorRegister.estimateFaces(canvasUploadRegister);
+
+    if (faces.length === 0) {
+      uploadStatusRegister.textContent = "No face detected";
+      uploadStatusRegister.classList.add("error");
+      uploadedFaceStatusRegister = null;
+      uploadedImageRegister = null;
+      showResult(registerResult, false, "No Face Detected", {
+        Message: "Please upload an image with a clear face",
+      });
+      return false;
     }
 
-    requestAnimationFrame(detect);
-  };
+    // Check face status
+    const shape = { width: canvasUploadRegister.width, height: canvasUploadRegister.height };
+    const options = { detectorType: "mediapipe" };
+    const { status, face } = mt.getFaceStatus(faces, shape, options);
 
-  detect();
+    uploadedFaceStatusRegister = status;
+
+    // Draw face box
+    if (face) {
+      ctx.beginPath();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = status === mt.FaceStatus.OK ? "#4ade80" : "#f59e0b";
+      ctx.rect(
+        face.box.xMin,
+        face.box.yMin,
+        face.box.xMax - face.box.xMin,
+        face.box.yMax - face.box.yMin
+      );
+      ctx.stroke();
+
+      if (face.landmarks) {
+        ctx.fillStyle = "#f43f5e";
+        face.landmarks.forEach((pt) => {
+          ctx.fillRect(pt.x - 2.5, pt.y - 2.5, 5, 5);
+        });
+      }
+    }
+
+    if (status !== mt.FaceStatus.OK) {
+      uploadStatusRegister.textContent = `Face issue: ${mt.FaceStatus[status]}`;
+      uploadStatusRegister.classList.add("warning");
+      uploadedImageRegister = null;
+      showResult(registerResult, false, "Face Quality Issue", {
+        Status: mt.FaceStatus[status],
+        Message: "Please upload an image with better face quality",
+      });
+      return false;
+    }
+
+    // Convert canvas to blob
+    const imageBlob = await canvasToBlob(canvasUploadRegister);
+    uploadedImageRegister = imageBlob;
+
+    // Check if we have the display name to proceed with registration
+    const displayName = displayNameInput.value.trim();
+    if (!displayName) {
+      uploadStatusRegister.textContent = "Face detected - Enter name to register";
+      uploadStatusRegister.classList.add("ok");
+      updateRegisterButtonState();
+      return true;
+    }
+
+    // =====================================================
+    // Send to Melon Server
+    // =====================================================
+
+    const galleryName = galleryNameInput.value.trim() || "default-gallery";
+
+    // Step 1: Create user
+    uploadStatusRegister.textContent = "Creating user on server...";
+    const userResponse = await melonClient.createUser(displayName);
+    currentUserUuid = userResponse.uuid;
+
+    // Step 2: Upload face to server
+    uploadStatusRegister.textContent = "Uploading face to server...";
+    await melonClient.registerFace(currentUserUuid, imageBlob);
+
+    // Step 3: Create token
+    uploadStatusRegister.textContent = "Creating access token...";
+    const now = Math.floor(Date.now() / 1000);
+    const validFrom = now;
+    const validThrough = now + 365 * 24 * 60 * 60; // 1 year
+
+    await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
+      gallery: galleryName,
+    });
+
+    // Success
+    uploadStatusRegister.textContent = "Registration complete!";
+    uploadStatusRegister.className = "status-overlay ok";
+    showResult(registerResult, true, "Registration Successful", {
+      "User UUID": currentUserUuid,
+      "Display Name": displayName,
+      Gallery: galleryName,
+    });
+
+    return true;
+
+  } catch (error) {
+    console.error("Registration error:", error);
+    uploadStatusRegister.textContent = "Registration failed";
+    uploadStatusRegister.classList.add("error");
+    uploadedFaceStatusRegister = null;
+    uploadedImageRegister = null;
+    showResult(registerResult, false, "Registration Failed", {
+      Error: error.message || error.error || "Unknown error",
+    });
+    return false;
+  }
 }
+
+// Helper: Load image from file
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Helper: Convert canvas to blob
+function canvasToBlob(canvas) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.95);
+  });
+}
+
+// Upload area event listeners - Registration
+uploadContainerRegister.addEventListener("click", () => {
+  photoUploadRegister.click();
+});
+
+uploadContainerRegister.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  uploadContainerRegister.classList.add("dragover");
+});
+
+uploadContainerRegister.addEventListener("dragleave", () => {
+  uploadContainerRegister.classList.remove("dragover");
+});
+
+uploadContainerRegister.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  uploadContainerRegister.classList.remove("dragover");
+
+  const files = e.dataTransfer.files;
+  if (files.length > 0 && files[0].type.startsWith("image/")) {
+    await processUploadedImageRegister(files[0]);
+  }
+});
+
+photoUploadRegister.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    await processUploadedImageRegister(file);
+  }
+});
+
+btnClearUploadRegister.addEventListener("click", (e) => {
+  e.stopPropagation();
+  uploadedImageRegister = null;
+  uploadedFaceStatusRegister = null;
+
+  uploadPlaceholderRegister.style.display = "flex";
+  canvasUploadRegister.style.display = "none";
+  uploadStatusRegister.style.display = "none";
+  btnClearUploadRegister.style.display = "none";
+
+  registerResult.innerHTML = "";
+  photoUploadRegister.value = "";
+  updateRegisterButtonState();
+});
+
+// Enable register button when name is entered
+displayNameInput.addEventListener("input", () => {
+  updateRegisterButtonState();
+});
+
+// =====================================================
+// Registration Button (for when name is entered after upload)
+// =====================================================
+
+btnRegister.addEventListener("click", async () => {
+  if (!uploadedImageRegister) {
+    showResult(registerResult, false, "No Image", {
+      Message: "Please upload an image first",
+    });
+    return;
+  }
+
+  const displayName = displayNameInput.value.trim();
+  if (!displayName) {
+    showResult(registerResult, false, "No Name", {
+      Message: "Please enter a display name",
+    });
+    return;
+  }
+
+  btnRegister.classList.add("loading");
+  btnRegister.disabled = true;
+  registerResult.innerHTML = "";
+
+  try {
+    const galleryName = galleryNameInput.value.trim() || "default-gallery";
+
+    // Step 1: Create user on server
+    uploadStatusRegister.textContent = "Creating user on server...";
+    const userResponse = await melonClient.createUser(displayName);
+    currentUserUuid = userResponse.uuid;
+
+    // Step 2: Upload face to server
+    uploadStatusRegister.textContent = "Uploading face to server...";
+    await melonClient.registerFace(currentUserUuid, uploadedImageRegister);
+
+    // Step 3: Create token
+    uploadStatusRegister.textContent = "Creating access token...";
+    const now = Math.floor(Date.now() / 1000);
+    const validFrom = now;
+    const validThrough = now + 365 * 24 * 60 * 60; // 1 year
+
+    await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
+      gallery: galleryName,
+    });
+
+    uploadStatusRegister.textContent = "Registration complete!";
+    uploadStatusRegister.className = "status-overlay ok";
+    showResult(registerResult, true, "Registration Successful", {
+      "User UUID": currentUserUuid,
+      "Display Name": displayName,
+      Gallery: galleryName,
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    uploadStatusRegister.textContent = "Registration failed";
+    uploadStatusRegister.className = "status-overlay error";
+    showResult(registerResult, false, "Registration Failed", {
+      Error: error.message || error.error || "Unknown error",
+    });
+  } finally {
+    btnRegister.classList.remove("loading");
+    updateRegisterButtonState();
+  }
+});
+
+// =====================================================
+// Authentication (Camera Only)
+// =====================================================
 
 // Authentication detection loop
 async function startAuthDetection() {
@@ -244,56 +504,6 @@ async function startAuthDetection() {
   detect();
 }
 
-// Register face
-btnRegister.addEventListener("click", async () => {
-  btnRegister.classList.add("loading");
-  btnRegister.disabled = true;
-  registerResult.innerHTML = "";
-
-  try {
-    const displayName = displayNameInput.value.trim();
-    const galleryName = galleryNameInput.value.trim() || "default-gallery";
-
-    // Step 1: Create user
-    statusRegister.textContent = "Creating user...";
-    const userResponse = await melonClient.createUser(displayName);
-    currentUserUuid = userResponse.uuid;
-
-    // Step 2: Capture and upload face
-    statusRegister.textContent = "Capturing face...";
-    const imageBlob = await captureImage(videoRegister, canvasRegister);
-
-    statusRegister.textContent = "Uploading face...";
-    await melonClient.registerFace(currentUserUuid, imageBlob);
-
-    // Step 3: Create token
-    statusRegister.textContent = "Creating token...";
-    const now = Math.floor(Date.now() / 1000);
-    const validFrom = now;
-    const validThrough = now + 365 * 24 * 60 * 60; // 1 year
-
-    await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
-      gallery: galleryName,
-    });
-
-    statusRegister.textContent = "Registration complete!";
-    showResult(registerResult, true, "Registration Successful", {
-      "User UUID": currentUserUuid,
-      "Display Name": displayName,
-      Gallery: galleryName,
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    statusRegister.textContent = "Registration failed";
-    showResult(registerResult, false, "Registration Failed", {
-      Error: error.message || error.error || "Unknown error",
-    });
-  } finally {
-    btnRegister.classList.remove("loading");
-    btnRegister.disabled = false;
-  }
-});
-
 // Register device
 btnRegisterDevice.addEventListener("click", async () => {
   btnRegisterDevice.classList.add("loading");
@@ -311,13 +521,13 @@ btnRegisterDevice.addEventListener("click", async () => {
 
     statusAuth.textContent = "Generating device key...";
     const keyResponse = await melonClient.createDeviceKey(deviceResponse.uuid);
-    console.log("Device Key Response:", keyResponse); // Debug logs
+    console.log("Device Key Response:", keyResponse);
 
     saveDeviceInfo({
       uuid: deviceResponse.uuid,
       displayName: deviceResponse.display_name,
       keyId: keyResponse.uuid,
-      secretKey: keyResponse.secret, // Fixed: API returns 'secret', not 'key'
+      secretKey: keyResponse.secret,
       gallery: galleryName,
     });
 
@@ -350,7 +560,7 @@ async function authenticate() {
   if (!deviceInfo || isAuthRunning) return;
 
   isAuthRunning = true;
-  statusAuth.textContent = "Auto-authenticating...";
+  statusAuth.textContent = "Authenticating...";
   authResult.innerHTML = "";
 
   try {
@@ -369,6 +579,7 @@ async function authenticate() {
       statusAuth.textContent = isMatch
         ? "Authentication successful!"
         : "No match found";
+      statusAuth.className = isMatch ? "status-overlay ok" : "status-overlay error";
 
       const resultData = {
         "User UUID": bestMatch.uuid,
@@ -397,6 +608,7 @@ async function authenticate() {
       }
     } else {
       statusAuth.textContent = "No faces matched";
+      statusAuth.className = "status-overlay error";
       showResult(authResult, false, "No Match Found", {
         Message: "No registered faces matched the captured image",
       });
@@ -421,6 +633,7 @@ async function authenticate() {
 }
 
 function startAutoAuth() {
+  return
   if (autoAuthTimer) clearTimeout(autoAuthTimer);
 
   const loop = async () => {
@@ -434,44 +647,40 @@ function startAutoAuth() {
   loop();
 }
 
-// Start auto-auth when device is ready
-// (Moved to loadDeviceInfo)
-
-// Update device registration to start auto-auth
-// (Modify btnRegisterDevice listener below)
-
-// Enable register button when name is entered
-displayNameInput.addEventListener("input", () => {
-  // Will be enabled by detection loop if face is OK
-});
-
-// Initialize
-(async () => {
-  loadDeviceInfo();
-
-  // Initialize registration
-  statusRegister.textContent = "Initializing camera...";
-  const cameraOk1 = await initCamera(videoRegister);
-  if (!cameraOk1) {
-    statusRegister.textContent = "Camera access denied";
-    updateStatus(statusRegister, "error");
+// Manual authenticate button click
+btnAuthenticate.addEventListener("click", async () => {
+  if (!deviceInfo) {
+    showResult(authResult, false, "Device Not Registered", {
+      Message: "Please register the device first",
+    });
     return;
   }
 
-  statusRegister.textContent = "Loading face detector...";
+  btnAuthenticate.classList.add("loading");
+  btnAuthenticate.disabled = true;
+
+  await authenticate();
+
+  btnAuthenticate.classList.remove("loading");
+  btnAuthenticate.disabled = false;
+});
+
+// =====================================================
+// Initialize
+// =====================================================
+
+(async () => {
+  loadDeviceInfo();
+
+  // Initialize face detector for registration (upload)
+  console.log("Loading face detector for registration...");
   detectorRegister = await initDetector();
+  console.log("Registration detector ready");
 
-  videoRegister.addEventListener("loadeddata", () => {
-    canvasRegister.width = videoRegister.videoWidth;
-    canvasRegister.height = videoRegister.videoHeight;
-    statusRegister.textContent = "Ready";
-    startRegistrationDetection();
-  });
-
-  // Initialize authentication
+  // Initialize authentication (camera)
   statusAuth.textContent = "Initializing camera...";
-  const cameraOk2 = await initCamera(videoAuth);
-  if (!cameraOk2) {
+  const cameraOk = await initCamera(videoAuth);
+  if (!cameraOk) {
     statusAuth.textContent = "Camera access denied";
     updateStatus(statusAuth, "error");
     return;
