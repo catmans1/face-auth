@@ -213,7 +213,6 @@ async function processUploadedImage(file) {
 
           if (face) {
             referenceFaceData = face;
-            drawFace(ctx, face, canvasReference, "#8b5cf6");
 
             referenceStatus.textContent = "Face detected - Ready to compare";
             referenceStatus.classList.add("ok");

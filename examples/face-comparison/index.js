@@ -222,27 +222,6 @@ async function processUploadedImageRegister(file) {
     const options = { detectorType: "mediapipe" };
     const { status, face } = mt.getFaceStatus(faces, shape, options);
 
-    // Draw face box
-    if (face) {
-      ctx.beginPath();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = status === mt.FaceStatus.OK ? "#4ade80" : "#f59e0b";
-      ctx.rect(
-        face.box.xMin,
-        face.box.yMin,
-        face.box.xMax - face.box.xMin,
-        face.box.yMax - face.box.yMin
-      );
-      ctx.stroke();
-
-      if (face.landmarks) {
-        ctx.fillStyle = "#f43f5e";
-        face.landmarks.forEach((pt) => {
-          ctx.fillRect(pt.x - 2.5, pt.y - 2.5, 5, 5);
-        });
-      }
-    }
-
     if (status !== mt.FaceStatus.OK) {
       uploadStatusRegister.textContent = `Face issue: ${mt.FaceStatus[status]}`;
       uploadStatusRegister.classList.add("warning");
