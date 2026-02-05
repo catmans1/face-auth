@@ -9,6 +9,10 @@ import {
   CreateDeviceKeyResponse,
   MatchResponse,
   MelonApiError,
+  CreateUserV3Request,
+  CreateUserV3Response,
+  EnrollFaceV3Response,
+  VerifyV3Response,
 } from "./melon_types";
 
 /**
@@ -302,6 +306,136 @@ export class MelonApiClient {
       imageBlob,
       "image/jpeg"
     );
+  }
+
+  // =====================================================
+  // v3 API Methods (1-to-1 matching)
+  // =====================================================
+
+  /**
+   * Create a new user (v3)
+   */
+  async createUserV3(displayName: string): Promise<CreateUserV3Response> {
+    const token = await this.generateJWT();
+    const body: CreateUserV3Request = {
+      display_name: displayName,
+    };
+    return this.request<CreateUserV3Response>("POST", "/v3/users", token, body);
+  }
+
+  /**
+   * Get user information (v3)
+   */
+  async getUserV3(userUuid: string): Promise<CreateUserV3Response> {
+    const token = await this.generateJWT();
+    return this.request<CreateUserV3Response>(
+      "GET",
+      `/v3/users/${userUuid}`,
+      token
+    );
+  }
+
+  /**
+   * Enroll face for a user (v3)
+   * Uses multipart/form-data with file field
+   */
+  async enrollFaceV3(
+    userUuid: string,
+    imageBlob: Blob,
+    filename: string = "face.jpg"
+  ): Promise<EnrollFaceV3Response> {
+    const token = await this.generateJWT();
+    
+    // Create FormData for multipart/form-data
+    const formData = new FormData();
+    formData.append("file", imageBlob, filename);
+
+    const url = `${this.config.apiEndpoint}/v3/pipelines/enroll_face?user_id=${userUuid}`;
+    const headers: HeadersInit = {
+      Authorization: `Bearer ${token}`,
+      // Don't set Content-Type - browser will set it with boundary
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData: MelonApiError;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = {
+          error: `HTTP ${response.status}`,
+          message: errorText || response.statusText,
+          status: response.status,
+        };
+      }
+      throw errorData;
+    }
+
+    const text = await response.text();
+    if (!text) {
+      return {} as EnrollFaceV3Response;
+    }
+
+    return JSON.parse(text) as EnrollFaceV3Response;
+  }
+
+  /**
+   * Verify face for a user (v3) - 1-to-1 matching
+   * Uses multipart/form-data with file field
+   */
+  async verifyV3(
+    userUuid: string,
+    imageBlob: Blob,
+    filename: string = "face.jpg"
+  ): Promise<VerifyV3Response> {
+    const token = await this.generateJWT();
+
+    // Create FormData for multipart/form-data
+    const formData = new FormData();
+    formData.append("file", imageBlob, filename);
+
+    const url = `${this.config.apiEndpoint}/v3/pipelines/verify?user_id=${userUuid}`;
+    const headers: HeadersInit = {
+      Authorization: `Bearer ${token}`,
+      // Don't set Content-Type - browser will set it with boundary
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData: MelonApiError;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = {
+          error: `HTTP ${response.status}`,
+          message: errorText || response.statusText,
+          status: response.status,
+        };
+      }
+      throw errorData;
+    }
+
+    const text = await response.text();
+    if (!text) {
+      throw {
+        error: "EmptyResponse",
+        message: "Empty response from server",
+      } as MelonApiError;
+    }
+
+    return JSON.parse(text) as VerifyV3Response;
   }
 }
 

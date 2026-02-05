@@ -121,3 +121,27 @@ export interface MelonApiError {
   message?: string;
   status?: number;
 }
+
+// =====================================================
+// v3 API Types
+// =====================================================
+
+export interface CreateUserV3Request {
+  display_name: string;
+}
+
+export interface CreateUserV3Response {
+  uuid: string;
+  created: number;
+  updated: number;
+  display_name: string;
+}
+
+export interface EnrollFaceV3Response {
+  created: number;
+  updated: number;
+}
+
+export interface VerifyV3Response {
+  score: number;
+}

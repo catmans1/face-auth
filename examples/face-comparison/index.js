@@ -4,19 +4,44 @@ import "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl";
 import "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection";
 import "../../dist/get_face_status.js";
 
-// Configuration
-const MELON_CONFIG = {
+// Configuration - v2
+const MELON_CONFIG_V2 = {
   apiEndpoint: "https://api-beta.melon.co.jp/v2",
   keyId: "0196b4a0-a995-7277-9a65-61f2aa3c6116",
   secretKey: "iuuRawYRnz4wl2mvYdPd7yLkV2gakkim9JRPtwiAllU=",
   subject: "teacher",
 };
 
+// Configuration - v3
+const MELON_CONFIG_V3 = {
+  apiEndpoint: "https://api-beta.melon.co.jp",
+  keyId: "019c2872-a474-7384-9669-7caabfe8cb00",
+  secretKey: "D-ZJS6bS4bjZN93d3KQ0VZ8NTqsxxvngUNI8FNrPOP8=",
+  subject: "teacher",
+};
+
 const MATCH_THRESHOLD = 0.5;
 const DEFAULT_GALLERY = "default-gallery";
 
-// Initialize Melon API Client
-const melonClient = new mt.MelonApiClient(MELON_CONFIG);
+// Current API version (v2 or v3)
+let currentApiVersion = "v3";
+let melonClient = null;
+
+// face-api.js model URL - using local models (built from face-api.js-master)
+const FACE_API_MODEL_URL = "../../face-api.js-master/weights";
+
+// DOM Elements - API Version
+const apiVersionSelect = document.getElementById("api-version-select");
+
+// Initialize Melon API Client (will be updated based on version)
+function initializeMelonClient() {
+  const config = currentApiVersion === "v3" ? MELON_CONFIG_V3 : MELON_CONFIG_V2;
+  melonClient = new mt.MelonApiClient(config);
+  console.log(`Melon API Client initialized for ${currentApiVersion}`);
+}
+
+// Initialize with default version
+initializeMelonClient();
 
 // DOM Elements - Registration (Upload Only)
 const uploadContainerRegister = document.getElementById("upload-container-register");
@@ -43,7 +68,291 @@ let detectorAuth = null;
 let currentUserUuid = null;
 let deviceInfo = null;
 
-// Load device info from localStorage
+// face-api.js state
+let faceApiReady = false;
+let registeredFaceDescriptors = []; // Array of { uuid, descriptor }
+
+// =====================================================
+// face-api.js Functions
+// =====================================================
+
+// Load face-api.js models using helper functions
+async function loadFaceApiModels() {
+  // Wait for face-api.js to be available (with retries)
+  let retries = 10;
+  while (typeof faceapi === "undefined" && retries > 0) {
+    console.log(`Waiting for face-api.js... (${retries} retries left)`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    retries--;
+  }
+  
+  if (typeof faceapi === "undefined") {
+    console.error("face-api.js failed to load after retries");
+    return false;
+  }
+
+  console.log("=== face-api.js Model Loading Start ===");
+  console.log("face-api.js version:", faceapi.version || "unknown");
+  console.log("Loading models from:", FACE_API_MODEL_URL);
+
+  try {
+    // Load models in the same order as production code
+    // 1. Face Recognition Net FIRST (as per production)
+    console.log("1/5 Loading Face Recognition Model...");
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_API_MODEL_URL);
+    console.log("    Loaded:", faceapi.nets.faceRecognitionNet.isLoaded ? "Yes" : "No");
+    
+    // 2. Load detector and landmark models based on device type
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      console.log("2/5 Loading Face Landmark 68 Tiny Model (Mobile)...");
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "Yes" : "No");
+      
+      console.log("3/5 Loading Tiny Face Detector (Mobile)...");
+      await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.tinyFaceDetector.isLoaded ? "Yes" : "No");
+    } else {
+      console.log("2/5 Loading Face Landmark 68 Model (Desktop)...");
+      await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
+      
+      console.log("3/5 Loading SSD Mobilenet V1 (Desktop)...");
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
+    }
+    
+    // 4. Load the other detector for flexibility
+    if (!isMobile) {
+      console.log("4/5 Loading Tiny Face Detector (for fallback)...");
+      await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.tinyFaceDetector.isLoaded ? "Yes" : "No");
+      
+      console.log("5/5 Loading Face Landmark 68 Tiny Model (for fallback)...");
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "Yes" : "No");
+    } else {
+      console.log("4/5 Loading SSD Mobilenet V1 (for fallback)...");
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
+      
+      console.log("5/5 Loading Face Landmark 68 Model (for fallback)...");
+      await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
+    }
+    
+    // Verify models loaded (matching production pattern)
+    const areModelsLoaded = () => {
+      if (isMobile) {
+        return (
+          faceapi.nets.faceRecognitionNet.isLoaded &&
+          faceapi.nets.faceLandmark68TinyNet.isLoaded &&
+          faceapi.nets.tinyFaceDetector.isLoaded
+        );
+      }
+      return (
+        faceapi.nets.faceRecognitionNet.isLoaded &&
+        faceapi.nets.faceLandmark68Net.isLoaded &&
+        faceapi.nets.ssdMobilenetv1.isLoaded
+      );
+    };
+    
+    const allLoaded = areModelsLoaded();
+    
+    console.log("=== Model Loading Summary ===");
+    console.log("Face Recognition:", faceapi.nets.faceRecognitionNet.isLoaded ? "✓" : "✗");
+    if (isMobile) {
+      console.log("Face Landmark 68 Tiny:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "✓" : "✗");
+      console.log("Tiny Face Detector:", faceapi.nets.tinyFaceDetector.isLoaded ? "✓" : "✗");
+    } else {
+      console.log("Face Landmark 68:", faceapi.nets.faceLandmark68Net.isLoaded ? "✓" : "✗");
+      console.log("SSD Mobilenet V1:", faceapi.nets.ssdMobilenetv1.isLoaded ? "✓" : "✗");
+    }
+    console.log("All required models loaded:", allLoaded ? "✓ YES" : "✗ NO");
+    
+    if (allLoaded) {
+      console.log("=== face-api.js Ready! ===");
+      faceApiReady = true;
+      return true;
+    } else {
+      console.error("Required models failed to load!");
+      return false;
+    }
+    
+  } catch (error) {
+    console.error("Failed to load face-api.js models:", error);
+    console.error("Error details:", error.message);
+    console.error("Model URL:", FACE_API_MODEL_URL);
+    return false;
+  }
+}
+
+// face-api.js Detection options (adjustable via UI)
+let FACE_API_INPUT_SIZE = 512; // For TinyFaceDetector (options: 128, 160, 224, 320, 416, 512, 608)
+let FACE_API_SCORE_THRESHOLD = 0.3; // For TinyFaceDetector (range: 0-1)
+let FACE_API_MIN_CONFIDENCE = 0.5; // For SsdMobilenetv1 (range: 0-1)
+let FACE_API_USE_SSD = true; // Use SsdMobilenetv1 (more reliable) or TinyFaceDetector
+
+// DOM Elements - face-api.js Detection Controls
+const btnSsd = document.getElementById("btn-ssd");
+const btnTiny = document.getElementById("btn-tiny");
+const ssdControls = document.getElementById("ssd-controls");
+const tinyControls = document.getElementById("tiny-controls");
+const minConfidenceSlider = document.getElementById("min-confidence-slider");
+const minConfidenceValue = document.getElementById("min-confidence-value");
+const inputSizeSlider = document.getElementById("input-size-slider");
+const inputSizeValue = document.getElementById("input-size-value");
+const scoreThresholdSlider = document.getElementById("score-threshold-slider");
+const scoreThresholdValue = document.getElementById("score-threshold-value");
+
+// Compute face descriptor using face-api.js
+// Following the production code pattern exactly
+async function computeFaceDescriptor(input) {
+  if (!faceApiReady) {
+    console.warn("face-api.js not ready");
+    return null;
+  }
+
+  try {
+    const inputWidth = input.width || input.videoWidth;
+    const inputHeight = input.height || input.videoHeight;
+    console.log("=== face-api.js Detection Start ===");
+    console.log("Input type:", input.constructor.name);
+    console.log("Input dimensions:", inputWidth, "x", inputHeight);
+    
+    // Match production code pattern exactly
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // Get detector options (matching production getFaceDetectorOptions)
+    const getFaceDetectorOptions = () => {
+      if (isMobile) {
+        // For mobile, use TinyFaceDetector with default options (or user's scoreThreshold)
+        return new faceapi.TinyFaceDetectorOptions({
+          scoreThreshold: FACE_API_SCORE_THRESHOLD
+        });
+      }
+      // For desktop, use SSD with user's minConfidence
+      return new faceapi.SsdMobilenetv1Options({
+        minConfidence: FACE_API_MIN_CONFIDENCE
+      });
+    };
+    
+    // Use user's detector preference if set, otherwise auto-detect
+    let detectorOptions;
+    if (FACE_API_USE_SSD !== undefined && !FACE_API_USE_SSD) {
+      // User explicitly wants TinyFaceDetector
+      detectorOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize: FACE_API_INPUT_SIZE,
+        scoreThreshold: FACE_API_SCORE_THRESHOLD
+      });
+    } else if (FACE_API_USE_SSD !== undefined && FACE_API_USE_SSD) {
+      // User explicitly wants SSD
+      detectorOptions = new faceapi.SsdMobilenetv1Options({
+        minConfidence: FACE_API_MIN_CONFIDENCE
+      });
+    } else {
+      // Auto-detect based on device
+      detectorOptions = getFaceDetectorOptions();
+    }
+    
+    console.log("Detector:", detectorOptions instanceof faceapi.SsdMobilenetv1Options ? "SsdMobilenetv1" : "TinyFaceDetector");
+    console.log("Options:", JSON.stringify(detectorOptions));
+    
+    // Match production pattern exactly:
+    // const detection = await faceapi
+    //   .detectSingleFace(img, this.getFaceDetectorOptions())
+    //   .withFaceLandmarks(this.isMobile)
+    //   .withFaceDescriptor();
+    const detection = await faceapi
+      .detectSingleFace(input, detectorOptions)
+      .withFaceLandmarks(isMobile)  // Pass boolean for mobile (true = use tiny model)
+      .withFaceDescriptor();
+    
+    // Check if face was detected (as per docs: "If no face is detected, the detection object will be undefined")
+    if (detection) {
+      console.log("✓ Face detected!");
+      console.log("  Score:", detection.detection.score.toFixed(4));
+      console.log("  Box:", JSON.stringify({
+        x: Math.round(detection.detection.box.x),
+        y: Math.round(detection.detection.box.y),
+        width: Math.round(detection.detection.box.width),
+        height: Math.round(detection.detection.box.height)
+      }));
+      console.log("  Landmarks:", detection.landmarks.positions.length, "points");
+      console.log("  Descriptor length:", detection.descriptor.length);
+      console.log("=== face-api.js Detection SUCCESS ===");
+      return detection.descriptor;
+    }
+    
+    console.warn("✗ No face detected");
+    console.log("=== face-api.js Detection FAILED ===");
+    return null;
+    
+  } catch (error) {
+    console.error("face-api.js error:", error.message);
+    console.error("Stack:", error.stack);
+    console.log("=== face-api.js Detection ERROR ===");
+    return null;
+  }
+}
+
+// Save face descriptor to localStorage
+function saveFaceDescriptor(uuid, descriptor) {
+  const stored = localStorage.getItem("faceDescriptors");
+  const descriptors = stored ? JSON.parse(stored) : [];
+  
+  // Convert Float32Array to regular array for JSON storage
+  const descriptorArray = Array.from(descriptor);
+  
+  descriptors.push({ uuid, descriptor: descriptorArray });
+  localStorage.setItem("faceDescriptors", JSON.stringify(descriptors));
+  
+  // Update in-memory cache
+  registeredFaceDescriptors = descriptors;
+}
+
+// Load face descriptors from localStorage
+function loadFaceDescriptors() {
+  const stored = localStorage.getItem("faceDescriptors");
+  if (stored) {
+    registeredFaceDescriptors = JSON.parse(stored);
+    console.log(`Loaded ${registeredFaceDescriptors.length} face descriptors from storage`);
+  }
+}
+
+// Find best match using face-api.js
+function findBestFaceApiMatch(queryDescriptor) {
+  if (!queryDescriptor || registeredFaceDescriptors.length === 0) {
+    return null;
+  }
+
+  let bestMatch = null;
+  let bestDistance = Infinity;
+
+  for (const registered of registeredFaceDescriptors) {
+    const distance = faceapi.euclideanDistance(
+      queryDescriptor,
+      new Float32Array(registered.descriptor)
+    );
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestMatch = {
+        uuid: registered.uuid,
+        distance: distance,
+        similarity: Math.max(0, 1 - distance), // Convert distance to similarity (0-1)
+      };
+    }
+  }
+
+  return bestMatch;
+}
+
+// =====================================================
+// Device & Storage Functions
+// =====================================================
+
 function loadDeviceInfo() {
   const stored = localStorage.getItem("melonDeviceInfo");
   if (stored) {
@@ -59,14 +368,30 @@ function saveDeviceInfo(info) {
 }
 
 function updateDeviceUI() {
-  if (deviceInfo) {
-    btnRegisterDevice.textContent = "✓ Device Registered";
-    btnRegisterDevice.disabled = true;
-    btnAuthenticate.disabled = false;
+  if (currentApiVersion === "v2") {
+    if (deviceInfo) {
+      btnRegisterDevice.textContent = "✓ Device Registered";
+      btnRegisterDevice.disabled = true;
+      btnAuthenticate.disabled = false;
+    } else {
+      btnRegisterDevice.textContent = "Register Device";
+      btnRegisterDevice.disabled = false;
+      btnAuthenticate.disabled = true;
+    }
+  } else {
+    // v3: Enable authenticate if user is registered
+    if (currentUserUuid) {
+      btnAuthenticate.disabled = false;
+    } else {
+      btnAuthenticate.disabled = true;
+    }
   }
 }
 
-// Initialize camera
+// =====================================================
+// Camera & Detection Functions
+// =====================================================
+
 async function initCamera(video) {
   try {
     const constraints = {
@@ -85,7 +410,6 @@ async function initCamera(video) {
   }
 }
 
-// Initialize face detector
 async function initDetector() {
   const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
   const detectorConfig = {
@@ -97,7 +421,6 @@ async function initDetector() {
   return await faceDetection.createDetector(model, detectorConfig);
 }
 
-// Draw face on canvas
 function drawFace(ctx, face, canvas) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -122,7 +445,6 @@ function drawFace(ctx, face, canvas) {
   }
 }
 
-// Update status overlay
 function updateStatus(statusElement, status, faceStatus) {
   statusElement.className = "status-overlay";
 
@@ -135,7 +457,6 @@ function updateStatus(statusElement, status, faceStatus) {
   }
 }
 
-// Capture image from video
 function captureImage(video, canvas) {
   const ctx = canvas.getContext("2d");
   canvas.width = video.videoWidth;
@@ -149,7 +470,10 @@ function captureImage(video, canvas) {
   });
 }
 
-// Show result
+// =====================================================
+// UI Helpers
+// =====================================================
+
 function showResult(container, success, title, data) {
   const resultClass = success ? "success" : "error";
   const icon = success ? "✓" : "✗";
@@ -174,17 +498,60 @@ function showResult(container, success, title, data) {
   container.innerHTML = html;
 }
 
-// Generate auto name for user
+function showDualResult(container, melonResult, faceApiResult) {
+  let html = `<div style="display: flex; flex-direction: column; gap: 1rem;">`;
+
+  // Melon API Result
+  const melonClass = melonResult.success ? "success" : "error";
+  const melonIcon = melonResult.success ? "✓" : "✗";
+  html += `
+    <div class="result-card ${melonClass}">
+      <div class="result-title">${melonIcon} Melon API Result</div>
+  `;
+  if (melonResult.data) {
+    for (const [key, value] of Object.entries(melonResult.data)) {
+      html += `
+        <div class="result-item">
+          <span class="result-label">${key}:</span>
+          <span class="result-value">${value}</span>
+        </div>
+      `;
+    }
+  }
+  html += `</div>`;
+
+  // face-api.js Result
+  const faceApiClass = faceApiResult.success ? "success" : "error";
+  const faceApiIcon = faceApiResult.success ? "✓" : "✗";
+  html += `
+    <div class="result-card ${faceApiClass}">
+      <div class="result-title">${faceApiIcon} face-api.js Result</div>
+  `;
+  if (faceApiResult.data) {
+    for (const [key, value] of Object.entries(faceApiResult.data)) {
+      html += `
+        <div class="result-item">
+          <span class="result-label">${key}:</span>
+          <span class="result-value">${value}</span>
+        </div>
+      `;
+    }
+  }
+  html += `</div>`;
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
 function generateUserName() {
   return `user-${Date.now()}`;
 }
 
 // =====================================================
-// Upload Handling for Registration (Auto-sends to Melon Server)
+// Upload Handling for Registration
 // =====================================================
 
 async function processUploadedImageRegister(file) {
-  // Show canvas, hide placeholder
   uploadPlaceholderRegister.style.display = "none";
   canvasUploadRegister.style.display = "block";
   uploadStatusRegister.style.display = "block";
@@ -195,10 +562,8 @@ async function processUploadedImageRegister(file) {
   registerResult.innerHTML = "";
 
   try {
-    // Load image
     const img = await loadImage(file);
 
-    // Draw image on canvas
     const ctx = canvasUploadRegister.getContext("2d");
     canvasUploadRegister.width = img.width;
     canvasUploadRegister.height = img.height;
@@ -217,7 +582,6 @@ async function processUploadedImageRegister(file) {
       return false;
     }
 
-    // Check face status
     const shape = { width: canvasUploadRegister.width, height: canvasUploadRegister.height };
     const options = { detectorType: "mediapipe" };
     const { status, face } = mt.getFaceStatus(faces, shape, options);
@@ -232,40 +596,76 @@ async function processUploadedImageRegister(file) {
       return false;
     }
 
-    // Convert canvas to blob
     const imageBlob = await canvasToBlob(canvasUploadRegister);
-
-    // =====================================================
-    // Send to Melon Server (Auto-registration)
-    // =====================================================
-
     const displayName = generateUserName();
 
-    // Step 1: Create user on server
-    uploadStatusRegister.textContent = "Creating user on server...";
-    const userResponse = await melonClient.createUser(displayName);
-    currentUserUuid = userResponse.uuid;
+    // =====================================================
+    // Step 1: Compute face descriptor with face-api.js
+    // =====================================================
+    let faceDescriptor = null;
+    if (faceApiReady) {
+      uploadStatusRegister.textContent = "Computing face descriptor (face-api.js)...";
+      console.log("Computing face descriptor for registration...");
+      console.log("Canvas size:", canvasUploadRegister.width, "x", canvasUploadRegister.height);
+      faceDescriptor = await computeFaceDescriptor(canvasUploadRegister);
+      if (faceDescriptor) {
+        console.log("Face descriptor computed successfully:", faceDescriptor.length, "dimensions");
+      } else {
+        console.warn("face-api.js could not compute descriptor - face may not be detected");
+      }
+    } else {
+      console.warn("face-api.js not ready yet, skipping local descriptor");
+    }
 
-    // Step 2: Upload face to server
-    uploadStatusRegister.textContent = "Uploading face to server...";
-    await melonClient.registerFace(currentUserUuid, imageBlob);
+    // =====================================================
+    // Step 2: Register with Melon API (v2 or v3)
+    // =====================================================
+    if (currentApiVersion === "v3") {
+      // v3: Simple 1-to-1 matching flow
+      uploadStatusRegister.textContent = "Creating user on server (v3)...";
+      const userResponse = await melonClient.createUserV3(displayName);
+      currentUserUuid = userResponse.uuid;
 
-    // Step 3: Create token
-    uploadStatusRegister.textContent = "Creating access token...";
-    const now = Math.floor(Date.now() / 1000);
-    const validFrom = now;
-    const validThrough = now + 365 * 24 * 60 * 60; // 1 year
+      uploadStatusRegister.textContent = "Enrolling face (v3)...";
+      await melonClient.enrollFaceV3(currentUserUuid, imageBlob, "face.jpg");
+    } else {
+      // v2: Device-based flow
+      uploadStatusRegister.textContent = "Creating user on server (v2)...";
+      const userResponse = await melonClient.createUser(displayName);
+      currentUserUuid = userResponse.uuid;
 
-    await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
-      gallery: DEFAULT_GALLERY,
-    });
+      uploadStatusRegister.textContent = "Uploading face to server (v2)...";
+      await melonClient.registerFace(currentUserUuid, imageBlob);
+
+      uploadStatusRegister.textContent = "Creating access token (v2)...";
+      const now = Math.floor(Date.now() / 1000);
+      const validFrom = now;
+      const validThrough = now + 365 * 24 * 60 * 60;
+
+      await melonClient.createUserToken(currentUserUuid, validFrom, validThrough, {
+        gallery: DEFAULT_GALLERY,
+      });
+    }
+
+    // =====================================================
+    // Step 3: Save face descriptor locally
+    // =====================================================
+    if (faceDescriptor) {
+      saveFaceDescriptor(currentUserUuid, faceDescriptor);
+    }
 
     // Success
     uploadStatusRegister.textContent = "Registration complete!";
     uploadStatusRegister.className = "status-overlay ok";
     showResult(registerResult, true, "Registration Successful", {
       "User UUID": currentUserUuid,
+      "API Version": currentApiVersion,
+      "Melon API": "✓ Registered",
+      "face-api.js": faceDescriptor ? "✓ Descriptor saved" : "✗ Not available",
     });
+
+    // Update UI for authentication button
+    updateDeviceUI();
 
     return true;
 
@@ -280,7 +680,6 @@ async function processUploadedImageRegister(file) {
   }
 }
 
-// Helper: Load image from file
 function loadImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -295,14 +694,13 @@ function loadImage(file) {
   });
 }
 
-// Helper: Convert canvas to blob
 function canvasToBlob(canvas) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.95);
   });
 }
 
-// Upload area event listeners - Registration
+// Upload area event listeners
 uploadContainerRegister.addEventListener("click", () => {
   photoUploadRegister.click();
 });
@@ -346,10 +744,51 @@ btnClearUploadRegister.addEventListener("click", (e) => {
 });
 
 // =====================================================
-// Authentication (Camera Only)
+// face-api.js Detection Controls
 // =====================================================
 
-// Authentication detection loop
+// Detector toggle
+btnSsd.addEventListener("click", () => {
+  FACE_API_USE_SSD = true;
+  btnSsd.classList.add("active");
+  btnTiny.classList.remove("active");
+  ssdControls.style.display = "block";
+  tinyControls.style.display = "none";
+});
+
+btnTiny.addEventListener("click", () => {
+  FACE_API_USE_SSD = false;
+  btnTiny.classList.add("active");
+  btnSsd.classList.remove("active");
+  tinyControls.style.display = "block";
+  ssdControls.style.display = "none";
+});
+
+// Min Confidence (for SSD)
+minConfidenceSlider.addEventListener("input", (e) => {
+  const value = parseFloat(e.target.value);
+  FACE_API_MIN_CONFIDENCE = value;
+  minConfidenceValue.textContent = value.toFixed(1);
+});
+
+// Input Size (for TinyFaceDetector)
+inputSizeSlider.addEventListener("input", (e) => {
+  const value = parseInt(e.target.value);
+  FACE_API_INPUT_SIZE = value;
+  inputSizeValue.textContent = value;
+});
+
+// Score Threshold (for TinyFaceDetector)
+scoreThresholdSlider.addEventListener("input", (e) => {
+  const value = parseFloat(e.target.value);
+  FACE_API_SCORE_THRESHOLD = value;
+  scoreThresholdValue.textContent = value.toFixed(1);
+});
+
+// =====================================================
+// Authentication (Camera Only) - Dual Results
+// =====================================================
+
 async function startAuthDetection() {
   const ctx = canvasAuth.getContext("2d");
 
@@ -423,81 +862,195 @@ btnRegisterDevice.addEventListener("click", async () => {
   }
 });
 
-// Authentication
+// Dual Authentication
 let isAuthRunning = false;
 
 async function authenticate() {
-  if (!deviceInfo || isAuthRunning) return;
+  // v2 requires deviceInfo, v3 requires currentUserUuid
+  if (currentApiVersion === "v2" && !deviceInfo) return;
+  if (currentApiVersion === "v3" && !currentUserUuid) {
+    statusAuth.textContent = "Please register a user first";
+    authResult.innerHTML = "";
+    showResult(authResult, false, "No User Registered", {
+      Message: "Please register a user before authenticating (v3 requires user_id)",
+    });
+    return;
+  }
+  if (isAuthRunning) return;
 
   isAuthRunning = true;
   statusAuth.textContent = "Authenticating...";
   authResult.innerHTML = "";
 
+  let melonResult = { success: false, data: {} };
+  let faceApiResultData = { success: false, data: {} };
+
   try {
     const imageBlob = await captureImage(videoAuth, canvasAuth);
 
-    const matchResponse = await melonClient.matchFace(
-      imageBlob,
-      deviceInfo.keyId,
-      deviceInfo.secretKey
-    );
+    // =====================================================
+    // Melon API Authentication (v2 or v3)
+    // =====================================================
+    statusAuth.textContent = `Authenticating with Melon API (${currentApiVersion})...`;
+    try {
+      if (currentApiVersion === "v3") {
+        // v3: 1-to-1 matching with user_id
+        const verifyResponse = await melonClient.verifyV3(
+          currentUserUuid,
+          imageBlob,
+          "face.jpg"
+        );
 
-    if (matchResponse.users && matchResponse.users.length > 0) {
-      const bestMatch = matchResponse.users[0];
-      const isMatch = bestMatch.score >= MATCH_THRESHOLD;
+        const isMatch = verifyResponse.score >= MATCH_THRESHOLD;
 
-      statusAuth.textContent = isMatch
-        ? "Authentication successful!"
-        : "No match found";
-      statusAuth.className = isMatch ? "status-overlay ok" : "status-overlay error";
+        melonResult = {
+          success: isMatch,
+          data: {
+            "User UUID": currentUserUuid,
+            "Match Score": (verifyResponse.score * 100).toFixed(2) + "%",
+            Status: isMatch ? "✓ Authenticated" : "✗ Rejected",
+            "API Version": "v3",
+          },
+        };
+      } else {
+        // v2: Device-based matching
+        const matchResponse = await melonClient.matchFace(
+          imageBlob,
+          deviceInfo.keyId,
+          deviceInfo.secretKey
+        );
 
-      const resultData = {
-        "User UUID": bestMatch.uuid,
-        "Match Score": (bestMatch.score * 100).toFixed(2) + "%",
-        Status: isMatch ? "✓ Authenticated" : "✗ Rejected",
+        if (matchResponse.users && matchResponse.users.length > 0) {
+          const bestMatch = matchResponse.users[0];
+          const isMatch = bestMatch.score >= MATCH_THRESHOLD;
+
+          melonResult = {
+            success: isMatch,
+            data: {
+              "User UUID": bestMatch.uuid,
+              "Match Score": (bestMatch.score * 100).toFixed(2) + "%",
+              Status: isMatch ? "✓ Authenticated" : "✗ Rejected",
+              "API Version": "v2",
+            },
+          };
+        } else {
+          melonResult = {
+            success: false,
+            data: {
+              Status: "✗ No match found",
+              "API Version": "v2",
+            },
+          };
+        }
+      }
+    } catch (error) {
+      console.error("Melon API error:", error);
+      melonResult = {
+        success: false,
+        data: {
+          Error: error.message || error.error || "API error",
+          "API Version": currentApiVersion,
+        },
       };
+    }
 
-      showResult(
-        authResult,
-        isMatch,
-        isMatch ? "Authentication Successful" : "Authentication Failed",
-        resultData
-      );
+    // =====================================================
+    // face-api.js Authentication (returns distance only, no threshold check)
+    // =====================================================
+    statusAuth.textContent = "Authenticating with face-api.js...";
+    if (faceApiReady && registeredFaceDescriptors.length > 0) {
+      try {
+        const queryDescriptor = await computeFaceDescriptor(canvasAuth);
 
-      // Add score bar
-      if (isMatch) {
-        const scoreBar = `
-          <div style="margin-top: 1rem;">
-            <div class="result-label">Confidence</div>
-            <div class="score-bar">
-              <div class="score-fill" style="width: ${bestMatch.score * 100}%"></div>
-            </div>
-          </div>
-        `;
-        authResult.querySelector(".result-card").innerHTML += scoreBar;
+        if (queryDescriptor) {
+          const bestMatch = findBestFaceApiMatch(queryDescriptor);
+
+          if (bestMatch) {
+            // Return distance/similarity with detection parameters
+            const detectorInfo = FACE_API_USE_SSD 
+              ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
+              : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+            
+            faceApiResultData = {
+              success: true,
+              data: {
+                "User UUID": bestMatch.uuid,
+                "Distance": bestMatch.distance.toFixed(4),
+                "Similarity": (bestMatch.similarity * 100).toFixed(2) + "%",
+                ...detectorInfo,
+                Status: "✓ Comparison Complete",
+              },
+            };
+          } else {
+            const detectorInfo = FACE_API_USE_SSD 
+              ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
+              : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+            
+            faceApiResultData = {
+              success: false,
+              data: {
+                ...detectorInfo,
+                Status: "✗ No registered faces to compare",
+              },
+            };
+          }
+        } else {
+          const detectorInfo = FACE_API_USE_SSD 
+            ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
+            : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+          
+          faceApiResultData = {
+            success: false,
+            data: {
+              ...detectorInfo,
+              Status: "✗ Could not detect face",
+            },
+          };
+        }
+      } catch (error) {
+        console.error("face-api.js error:", error);
+        const detectorInfo = FACE_API_USE_SSD 
+          ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
+          : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+        
+        faceApiResultData = {
+          success: false,
+          data: {
+            ...detectorInfo,
+            Error: error.message || "Detection error",
+          },
+        };
       }
     } else {
-      statusAuth.textContent = "No faces matched";
-      statusAuth.className = "status-overlay error";
-      showResult(authResult, false, "No Match Found", {
-        Message: "No registered faces matched the captured image",
-      });
+      const detectorInfo = FACE_API_USE_SSD 
+        ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
+        : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+      
+      faceApiResultData = {
+        success: false,
+        data: {
+          ...detectorInfo,
+          Status: faceApiReady ? "✗ No registered faces" : "✗ Models not loaded",
+        },
+      };
     }
+
+    // Display dual results
+    const bothSuccess = melonResult.success && faceApiResultData.success;
+    statusAuth.textContent = bothSuccess
+      ? "Both authentications successful!"
+      : "Authentication completed";
+    statusAuth.className = bothSuccess ? "status-overlay ok" : "status-overlay warning";
+
+    showDualResult(authResult, melonResult, faceApiResultData);
+
   } catch (error) {
     console.error("Authentication error:", error);
-
-    if (error.status === 422) {
-      const msg = error.message ? error.message.trim() : "Face quality issue";
-      statusAuth.textContent = msg;
-      statusAuth.className = "status-overlay warning";
-
-      showResult(authResult, false, "Authentication Feedback", {
-        Message: msg,
-      });
-    } else {
-      statusAuth.textContent = "Authentication failed";
-      statusAuth.className = "status-overlay error";
-    }
+    statusAuth.textContent = "Authentication failed";
+    statusAuth.className = "status-overlay error";
+    showResult(authResult, false, "Authentication Failed", {
+      Error: error.message || "Unknown error",
+    });
   } finally {
     isAuthRunning = false;
   }
@@ -505,9 +1058,16 @@ async function authenticate() {
 
 // Manual authenticate button click
 btnAuthenticate.addEventListener("click", async () => {
-  if (!deviceInfo) {
+  if (currentApiVersion === "v2" && !deviceInfo) {
     showResult(authResult, false, "Device Not Registered", {
-      Message: "Please register the device first",
+      Message: "Please register the device first (v2)",
+    });
+    return;
+  }
+  
+  if (currentApiVersion === "v3" && !currentUserUuid) {
+    showResult(authResult, false, "User Not Registered", {
+      Message: "Please register a user first (v3)",
     });
     return;
   }
@@ -518,20 +1078,92 @@ btnAuthenticate.addEventListener("click", async () => {
   await authenticate();
 
   btnAuthenticate.classList.remove("loading");
-  btnAuthenticate.disabled = false;
+  updateDeviceUI(); // Re-enable based on current state
 });
+
+// =====================================================
+// API Version Change Handler
+// =====================================================
+
+function updateUIForApiVersion() {
+  // Show/hide device registration button based on version
+  if (currentApiVersion === "v3") {
+    btnRegisterDevice.style.display = "none";
+    // v3 doesn't need device registration
+    if (deviceInfo) {
+      // Clear device info when switching to v3
+      deviceInfo = null;
+      localStorage.removeItem("deviceInfo");
+    }
+  } else {
+    btnRegisterDevice.style.display = "block";
+  }
+  
+  // Update info box message
+  const infoBox = document.querySelector(".info-box");
+  if (infoBox) {
+    if (currentApiVersion === "v3") {
+      infoBox.innerHTML = `<strong>Note:</strong> v3 uses 1-to-1 matching. Register a user first, then authenticate against that user.`;
+    } else {
+      infoBox.innerHTML = `<strong>Note:</strong> Device registration is required only once. After that, you can authenticate multiple times.`;
+    }
+  }
+  
+  // Update button states
+  updateDeviceUI();
+}
+
+// Set up API version change handler
+if (apiVersionSelect) {
+  apiVersionSelect.addEventListener("change", (e) => {
+    currentApiVersion = e.target.value;
+    initializeMelonClient();
+    updateUIForApiVersion();
+    console.log(`Switched to ${currentApiVersion} API`);
+    
+    // Clear results
+    authResult.innerHTML = "";
+    registerResult.innerHTML = "";
+  });
+} else {
+  console.warn("API version select element not found");
+}
 
 // =====================================================
 // Initialize
 // =====================================================
 
 (async () => {
+  // Ensure dropdown matches currentApiVersion (v3 is default)
+  if (apiVersionSelect) {
+    apiVersionSelect.value = currentApiVersion;
+    console.log(`Initialized with ${currentApiVersion} API (dropdown value: ${apiVersionSelect.value})`);
+  } else {
+    console.warn("API version select not found, using default:", currentApiVersion);
+  }
+  
+  // Initialize client with default version (v3)
+  initializeMelonClient();
+  
   loadDeviceInfo();
+  loadFaceDescriptors();
+  
+  // Set initial UI state
+  updateUIForApiVersion();
 
   // Initialize face detector for registration (upload)
-  console.log("Loading face detector for registration...");
+  console.log("Loading MediaPipe face detector for registration...");
   detectorRegister = await initDetector();
   console.log("Registration detector ready");
+
+  // Load face-api.js models in background
+  loadFaceApiModels().then((success) => {
+    if (success) {
+      console.log("face-api.js ready for dual authentication");
+    } else {
+      console.warn("face-api.js not available, using Melon API only");
+    }
+  });
 
   // Initialize authentication (camera)
   statusAuth.textContent = "Initializing camera...";
@@ -552,3 +1184,135 @@ btnAuthenticate.addEventListener("click", async () => {
     startAuthDetection();
   });
 })();
+
+// =====================================================
+// Debug Functions (can be called from browser console)
+// =====================================================
+
+// Test face-api.js with the current video frame (matching production pattern)
+window.testFaceApi = async function() {
+  console.log("=== Testing face-api.js (production pattern) ===");
+  
+  if (typeof faceapi === "undefined") {
+    console.error("faceapi object is undefined! Library not loaded.");
+    return;
+  }
+  
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  
+  console.log("\n--- Model Status ---");
+  console.log("Device type:", isMobile ? "Mobile" : "Desktop");
+  console.log("faceRecognitionNet:", faceapi.nets.faceRecognitionNet.isLoaded);
+  if (isMobile) {
+    console.log("faceLandmark68TinyNet:", faceapi.nets.faceLandmark68TinyNet.isLoaded);
+    console.log("tinyFaceDetector:", faceapi.nets.tinyFaceDetector.isLoaded);
+  } else {
+    console.log("faceLandmark68Net:", faceapi.nets.faceLandmark68Net.isLoaded);
+    console.log("ssdMobilenetv1:", faceapi.nets.ssdMobilenetv1.isLoaded);
+  }
+  
+  // Check models (matching production pattern)
+  const areModelsLoaded = () => {
+    if (isMobile) {
+      return (
+        faceapi.nets.faceRecognitionNet.isLoaded &&
+        faceapi.nets.faceLandmark68TinyNet.isLoaded &&
+        faceapi.nets.tinyFaceDetector.isLoaded
+      );
+    }
+    return (
+      faceapi.nets.faceRecognitionNet.isLoaded &&
+      faceapi.nets.faceLandmark68Net.isLoaded &&
+      faceapi.nets.ssdMobilenetv1.isLoaded
+    );
+  };
+  
+  if (!areModelsLoaded()) {
+    console.error("Required models not loaded!");
+    return;
+  }
+  
+  console.log("\n--- Test 1: Production pattern (with device-specific options) ---");
+  console.log("Video dimensions:", videoAuth.videoWidth, "x", videoAuth.videoHeight);
+  
+  try {
+    // Match production pattern exactly
+    const getFaceDetectorOptions = () => {
+      if (isMobile) {
+        return new faceapi.TinyFaceDetectorOptions();
+      }
+      return new faceapi.SsdMobilenetv1Options();
+    };
+    
+    const detection = await faceapi
+      .detectSingleFace(videoAuth, getFaceDetectorOptions())
+      .withFaceLandmarks(isMobile)  // Pass boolean for mobile
+      .withFaceDescriptor();
+    
+    if (detection) {
+      console.log("✓ SUCCESS! Face detected");
+      console.log("  Score:", detection.detection.score.toFixed(4));
+      console.log("  Box:", detection.detection.box);
+      console.log("  Descriptor:", detection.descriptor.length, "dimensions");
+    } else {
+      console.log("✗ No face detected (detection is undefined)");
+    }
+  } catch (e) {
+    console.error("Error:", e.message);
+    console.error("Stack:", e.stack);
+  }
+  
+  console.log("\n--- Test 2: With explicit SSD options (minConfidence: 0.1) ---");
+  try {
+    const detection = await faceapi
+      .detectSingleFace(videoAuth, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
+      .withFaceLandmarks(false)
+      .withFaceDescriptor();
+    
+    if (detection) {
+      console.log("✓ SUCCESS! Face detected");
+      console.log("  Score:", detection.detection.score.toFixed(4));
+    } else {
+      console.log("✗ No face detected");
+    }
+  } catch (e) {
+    console.error("Error:", e.message);
+  }
+  
+  console.log("\n--- Test 3: Just detection (no landmarks) ---");
+  try {
+    const detection = await faceapi.detectSingleFace(videoAuth, getFaceDetectorOptions());
+    if (detection) {
+      console.log("✓ Basic detection works! Score:", detection.score.toFixed(4));
+    } else {
+      console.log("✗ Basic detection failed");
+    }
+  } catch (e) {
+    console.error("Error:", e.message);
+  }
+  
+  console.log("\n=== Test Complete ===");
+};
+
+// Check model status
+window.checkModels = function() {
+  console.log("=== face-api.js Model Status ===");
+  console.log("faceapi object exists:", typeof faceapi !== "undefined");
+  if (typeof faceapi !== "undefined") {
+    console.log("ssdMobilenetv1:", faceapi.nets.ssdMobilenetv1.isLoaded);
+    console.log("tinyFaceDetector:", faceapi.nets.tinyFaceDetector.isLoaded);
+    console.log("faceLandmark68Net:", faceapi.nets.faceLandmark68Net.isLoaded);
+    console.log("faceLandmark68TinyNet:", faceapi.nets.faceLandmark68TinyNet.isLoaded);
+    console.log("faceRecognitionNet:", faceapi.nets.faceRecognitionNet.isLoaded);
+    console.log("faceApiReady flag:", faceApiReady);
+  }
+};
+
+// Reload models manually
+window.reloadModels = async function() {
+  console.log("Reloading face-api.js models...");
+  faceApiReady = false;
+  await loadFaceApiModels();
+};
+
+console.log("Debug functions available: testFaceApi(), checkModels(), reloadModels()");

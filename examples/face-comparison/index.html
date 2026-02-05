@@ -12,14 +12,23 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <!-- face-api.js for local face recognition (built locally) -->
+    <script src="../../face-api.js-master/dist/face-api.min.js"></script>
   </head>
   <body>
     <div class="container">
       <header>
         <h1>🎭 Face Comparison Demo</h1>
         <p class="subtitle">
-          Powered by Melon Face Recognition API & get-face-status
+          Powered by Melon API + face-api.js (Dual Authentication)
         </p>
+        <div style="margin-top: 1rem; display: flex; align-items: center; gap: 1rem; justify-content: center;">
+          <label for="api-version-select" style="font-weight: 600;">API Version:</label>
+          <select id="api-version-select" style="padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9rem;">
+            <option value="v2">v2 (Device-based)</option>
+            <option value="v3" selected>v3 (1-to-1 Matching)</option>
+          </select>
+        </div>
       </header>
 
       <div class="main-grid">
@@ -66,6 +75,91 @@
           <div class="info-box">
             <strong>Note:</strong> Device registration is required only once.
             After that, you can authenticate multiple times.
+          </div>
+
+          <!-- face-api.js Threshold Control (hidden) -->
+          <div class="threshold-control" style="display: none;">
+            <label for="threshold-slider">
+              Match Threshold: <span id="threshold-value">40</span>%
+            </label>
+            <input
+              type="range"
+              id="threshold-slider"
+              min="10"
+              max="80"
+              value="40"
+              step="5"
+            />
+            <div class="threshold-labels">
+              <span>Lenient</span>
+              <span>Balanced</span>
+              <span>Strict</span>
+            </div>
+          </div>
+
+          <!-- face-api.js Detector Selection -->
+          <div class="threshold-control">
+            <label>Face Detector:</label>
+            <div class="detector-toggle">
+              <button id="btn-ssd" class="mode-btn active">SsdMobilenetv1 (Accurate)</button>
+              <button id="btn-tiny" class="mode-btn">TinyFaceDetector (Fast)</button>
+            </div>
+          </div>
+
+          <!-- face-api.js Min Confidence Control (for SSD) -->
+          <div class="threshold-control" id="ssd-controls">
+            <label for="min-confidence-slider">
+              Min Confidence: <span id="min-confidence-value">0.5</span>
+            </label>
+            <input
+              type="range"
+              id="min-confidence-slider"
+              min="0.1"
+              max="0.9"
+              value="0.5"
+              step="0.1"
+            />
+            <div class="threshold-labels">
+              <span>0.1 (Lenient)</span>
+              <span>0.5</span>
+              <span>0.9 (Strict)</span>
+            </div>
+          </div>
+
+          <!-- face-api.js Input Size Control (for TinyFaceDetector) -->
+          <div class="threshold-control" id="tiny-controls" style="display: none;">
+            <label for="input-size-slider">
+              Input Size: <span id="input-size-value">512</span>
+            </label>
+            <input
+              type="range"
+              id="input-size-slider"
+              min="128"
+              max="608"
+              value="512"
+              step="32"
+            />
+            <div class="threshold-labels">
+              <span>128 (Fast)</span>
+              <span>320</span>
+              <span>608 (Accurate)</span>
+            </div>
+            <label for="score-threshold-slider" style="margin-top: 1rem;">
+              Score Threshold: <span id="score-threshold-value">0.3</span>
+            </label>
+            <input
+              type="range"
+              id="score-threshold-slider"
+              min="0.1"
+              max="0.9"
+              value="0.3"
+              step="0.1"
+            />
+            <div class="threshold-labels">
+              <span>0.1 (Lenient)</span>
+              <span>0.5</span>
+              <span>0.9 (Strict)</span>
+            </div>
           </div>
 
           <!-- Camera Input -->
