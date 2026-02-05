@@ -1,5 +1,11 @@
 {
   "public": true,
+  "rewrites": [
+    {
+      "source": "/examples/face-comparison/(.*)",
+      "destination": "/examples/face-comparison/$1"
+    }
+  ],
   "headers": [
     {
       "source": "/face-api-weights/:path*",
@@ -11,6 +17,10 @@
         {
           "key": "Access-Control-Allow-Methods",
           "value": "GET, HEAD, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type"
         },
         {
           "key": "Cache-Control",
