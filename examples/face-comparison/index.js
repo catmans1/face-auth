@@ -27,8 +27,36 @@ const DEFAULT_GALLERY = "default-gallery";
 let currentApiVersion = "v3";
 let melonClient = null;
 
-// face-api.js model URL - using local models (built from face-api.js-master)
-const FACE_API_MODEL_URL = "../../face-api.js-master/weights";
+// face-api.js model URL - will try multiple paths (local first, then CDN)
+let FACE_API_MODEL_URL = "../../face-api.js-master/weights"; // Default for local development
+
+// Function to detect available model path
+async function detectModelPath() {
+  const paths = [
+    "../../face-api.js-master/weights",  // Relative from HTML location
+    "/face-api.js-master/weights",      // Absolute from server root
+    "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights"  // CDN fallback
+  ];
+  
+  // Try to fetch a model manifest file to test if path is accessible
+  for (const path of paths) {
+    try {
+      const testUrl = `${path}/face_recognition_model-weights_manifest.json`;
+      const response = await fetch(testUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log(`✅ Model path available: ${path}`);
+        return path;
+      }
+    } catch (e) {
+      // Continue to next path
+      console.log(`⚠️ Testing model path: ${path} - not accessible`);
+    }
+  }
+  
+  // Default to CDN if nothing else works
+  console.warn("⚠️ Using CDN models as fallback");
+  return "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights";
+}
 
 // DOM Elements - API Version
 const apiVersionSelect = document.getElementById("api-version-select");
@@ -93,7 +121,10 @@ async function loadFaceApiModels() {
 
   console.log("=== face-api.js Model Loading Start ===");
   console.log("face-api.js version:", faceapi.version || "unknown");
-  console.log("Loading models from:", FACE_API_MODEL_URL);
+  
+  // Detect available model path (for Vercel compatibility)
+  FACE_API_MODEL_URL = await detectModelPath();
+  console.log("Using model path:", FACE_API_MODEL_URL);
 
   try {
     // Load models in the same order as production code

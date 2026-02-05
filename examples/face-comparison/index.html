@@ -12,29 +12,33 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
-    <!-- face-api.js for local face recognition (built locally) -->
+    <!-- face-api.js library - using CDN for Vercel compatibility -->
+    <!-- Models will still be loaded from local weights folder -->
     <script>
-      // Load face-api.js with fallback paths
+      // Load face-api.js with CDN fallback for Vercel deployment
       (function() {
         const paths = [
-          '/face-api.js-master/dist/face-api.min.js',  // Absolute from server root
-          '../../face-api.js-master/dist/face-api.min.js'  // Relative from HTML location
+          // Try CDN first (works on Vercel)
+          'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',
+          // Fallback to local if CDN fails (for local development)
+          '/face-api.js-master/dist/face-api.min.js',
+          '../../face-api.js-master/dist/face-api.min.js'
         ];
         
         let currentPath = 0;
         function loadScript() {
           if (currentPath >= paths.length) {
-            console.error('❌ Failed to load face-api.js. Tried paths:', paths);
-            console.error('Please ensure:');
-            console.error('1. Server is running from project root (python3 -m http.server 8000)');
-            console.error('2. File exists: face-api.js-master/dist/face-api.min.js');
+            console.error('❌ Failed to load face-api.js from all sources');
+            console.error('Tried:', paths);
+            alert('Error: Could not load face-api.js library. Please check your internet connection or server configuration.');
             return;
           }
           
           const script = document.createElement('script');
           script.src = paths[currentPath];
+          script.crossOrigin = 'anonymous'; // For CDN
           script.onerror = function() {
-            console.warn(`⚠️ Failed: ${paths[currentPath]}, trying: ${paths[currentPath + 1] || 'none'}`);
+            console.warn(`⚠️ Failed: ${paths[currentPath]}, trying next...`);
             currentPath++;
             loadScript();
           };
