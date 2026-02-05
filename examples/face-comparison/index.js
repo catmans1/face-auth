@@ -32,30 +32,48 @@ let FACE_API_MODEL_URL = "../../face-api.js-master/weights"; // Default for loca
 
 // Function to detect available model path
 async function detectModelPath() {
-  const paths = [
-    "../../face-api.js-master/weights",  // Relative from HTML location
-    "/face-api.js-master/weights",      // Absolute from server root
-    "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights"  // CDN fallback
+  // For Vercel/deployed environments, use CDN directly
+  // For local development, try local paths first
+  const isLocalhost = window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname === '';
+  
+  const paths = isLocalhost ? [
+    "../../face-api.js-master/weights",  // Relative from HTML location (local dev)
+    "/face-api.js-master/weights",      // Absolute from server root (local server)
+    "/face-api-weights",                 // Public folder (works in both local and Vercel)
+    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights"  // jsDelivr GitHub CDN
+  ] : [
+    "/face-api-weights",                 // Public folder (Vercel serves from public/)
+    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights",  // jsDelivr GitHub CDN
+    "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"  // GitHub raw CDN (fallback)
   ];
   
+  console.log("🔍 Detecting available model path...");
+  console.log(`  Environment: ${isLocalhost ? 'Local' : 'Deployed (Vercel)'}`);
+  
   // Try to fetch a model manifest file to test if path is accessible
-  for (const path of paths) {
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
     try {
       const testUrl = `${path}/face_recognition_model-weights_manifest.json`;
-      const response = await fetch(testUrl, { method: 'HEAD' });
+      console.log(`  Testing: ${testUrl}`);
+      const response = await fetch(testUrl, { method: 'GET', mode: 'cors' });
       if (response.ok) {
         console.log(`✅ Model path available: ${path}`);
         return path;
+      } else {
+        console.log(`  ❌ Response status: ${response.status}`);
       }
     } catch (e) {
       // Continue to next path
-      console.log(`⚠️ Testing model path: ${path} - not accessible`);
+      console.log(`  ⚠️ Error testing path: ${e.message}`);
     }
   }
   
-  // Default to CDN if nothing else works
-  console.warn("⚠️ Using CDN models as fallback");
-  return "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights";
+  // Default to jsDelivr GitHub CDN (best CORS support)
+  console.warn("⚠️ All paths failed, using jsDelivr GitHub CDN as fallback");
+  return "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
 }
 
 // DOM Elements - API Version
@@ -208,6 +226,10 @@ async function loadFaceApiModels() {
       return true;
     } else {
       console.error("Required models failed to load!");
+      console.error("💡 For Vercel deployment:");
+      console.error("   1. Ensure face-api.js-master/weights folder is in your repository");
+      console.error("   2. Or copy weights to public/face-api-weights folder");
+      console.error("   3. Or use GitHub raw content URL (may have CORS issues)");
       return false;
     }
     
@@ -215,6 +237,9 @@ async function loadFaceApiModels() {
     console.error("Failed to load face-api.js models:", error);
     console.error("Error details:", error.message);
     console.error("Model URL:", FACE_API_MODEL_URL);
+    console.error("💡 Tip: For Vercel, you may need to:");
+    console.error("   - Copy face-api.js-master/weights to public/face-api-weights");
+    console.error("   - Or configure vercel.json to serve the weights folder");
     return false;
   }
 }
