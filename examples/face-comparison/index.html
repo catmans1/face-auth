@@ -13,7 +13,40 @@
     />
     <link rel="stylesheet" href="styles.css" />
     <!-- face-api.js for local face recognition (built locally) -->
-    <script src="../../face-api.js-master/dist/face-api.min.js"></script>
+    <script>
+      // Load face-api.js with fallback paths
+      (function() {
+        const paths = [
+          '/face-api.js-master/dist/face-api.min.js',  // Absolute from server root
+          '../../face-api.js-master/dist/face-api.min.js'  // Relative from HTML location
+        ];
+        
+        let currentPath = 0;
+        function loadScript() {
+          if (currentPath >= paths.length) {
+            console.error('❌ Failed to load face-api.js. Tried paths:', paths);
+            console.error('Please ensure:');
+            console.error('1. Server is running from project root (python3 -m http.server 8000)');
+            console.error('2. File exists: face-api.js-master/dist/face-api.min.js');
+            return;
+          }
+          
+          const script = document.createElement('script');
+          script.src = paths[currentPath];
+          script.onerror = function() {
+            console.warn(`⚠️ Failed: ${paths[currentPath]}, trying: ${paths[currentPath + 1] || 'none'}`);
+            currentPath++;
+            loadScript();
+          };
+          script.onload = function() {
+            console.log(`✅ Loaded face-api.js from: ${paths[currentPath]}`);
+          };
+          document.head.appendChild(script);
+        }
+        
+        loadScript();
+      })();
+    </script>
   </head>
   <body>
     <div class="container">
