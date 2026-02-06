@@ -137,18 +137,34 @@ let registeredFaceDescriptors = []; // Array of { uuid, descriptor }
 
 // Load face-api.js models using helper functions
 async function loadFaceApiModels() {
+  // Wait for TensorFlow.js to be ready first
+  let tfRetries = 20;
+  while ((typeof tf === "undefined" || !window.tfjsReady) && tfRetries > 0) {
+    console.log(`Waiting for TensorFlow.js... (${tfRetries} retries left)`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    tfRetries--;
+  }
+  
+  if (typeof tf === "undefined") {
+    console.error("❌ TensorFlow.js failed to load");
+    return false;
+  }
+  console.log("✅ TensorFlow.js is ready");
+
   // Wait for face-api.js to be available (with retries)
-  let retries = 10;
+  let retries = 20;
   while (typeof faceapi === "undefined" && retries > 0) {
     console.log(`Waiting for face-api.js... (${retries} retries left)`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     retries--;
   }
 
   if (typeof faceapi === "undefined") {
-    console.error("face-api.js failed to load after retries");
+    console.error("❌ face-api.js failed to load after retries");
+    console.error("Check: Is face-api.js script loaded? Is TensorFlow.js loaded?");
     return false;
   }
+  console.log("✅ face-api.js is available");
 
   console.log("=== face-api.js Model Loading Start ===");
   console.log("face-api.js version:", faceapi.version || "unknown");
@@ -278,8 +294,19 @@ const scoreThresholdValue = document.getElementById("score-threshold-value");
 
 // Compute face descriptor using face-api.js (matches official examples + tests)
 async function computeFaceDescriptor(input) {
+  console.log("🔍 computeFaceDescriptor called:", {
+    faceApiReady,
+    inputType: input?.constructor?.name,
+    hasFaceApi: typeof faceapi !== "undefined"
+  });
+  
   if (!faceApiReady) {
-    console.warn("face-api.js not ready");
+    console.warn("⚠️ face-api.js not ready");
+    return null;
+  }
+
+  if (typeof faceapi === "undefined") {
+    console.error("❌ faceapi object is undefined!");
     return null;
   }
 
@@ -295,13 +322,16 @@ async function computeFaceDescriptor(input) {
       scoreThreshold: FACE_API_SCORE_THRESHOLD
     });
     const options = FACE_API_USE_SSD ? ssdOptions : tinyOptions;
+    console.log("🔍 Detection options:", FACE_API_USE_SSD ? "SSD" : "Tiny", options);
 
     // Official pattern from face-api.js tests: detectSingleFace(input, options).withFaceLandmarks().withFaceDescriptor()
     // Do NOT pass argument to withFaceLandmarks() - use full landmark model (default)
+    console.log("🔍 Calling detectSingleFace...");
     let detection = await faceapi
       .detectSingleFace(input, options)
       .withFaceLandmarks()
       .withFaceDescriptor();
+    console.log("🔍 detectSingleFace result:", detection ? "Found face" : "null");
 
     if (!detection) {
       console.log("  Fallback: detectAllFaces...");
@@ -309,6 +339,7 @@ async function computeFaceDescriptor(input) {
         .detectAllFaces(input, options)
         .withFaceLandmarks()
         .withFaceDescriptors();
+      console.log("🔍 detectAllFaces result:", all ? `${all.length} face(s)` : "null");
       if (all && all.length > 0) {
         detection = all.reduce((a, b) => (a.detection.score > b.detection.score ? a : b));
         console.log("  Found", all.length, "face(s), using best");
@@ -316,14 +347,16 @@ async function computeFaceDescriptor(input) {
     }
 
     if (detection) {
-      console.log("✓ Face detected! Score:", detection.detection.score.toFixed(3));
+      console.log("✅ Face detected! Score:", detection.detection.score.toFixed(3));
+      console.log("✅ Descriptor length:", detection.descriptor?.length);
       return detection.descriptor;
     }
 
-    console.warn("✗ No face detected");
+    console.warn("✗ No face detected by face-api.js");
     return null;
   } catch (error) {
-    console.error("face-api.js error:", error.message);
+    console.error("❌ face-api.js error in computeFaceDescriptor:", error);
+    console.error("Error details:", error.message, error.stack);
     return null;
   }
 }

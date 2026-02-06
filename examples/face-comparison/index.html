@@ -13,7 +13,7 @@
     />
     <link rel="stylesheet" href="styles.css" />
     <!-- TensorFlow.js 1.7.0 (required for face-api.js compatibility) -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.0/dist/tf.min.js" onload="window.tfjsReady = true;"></script>
     <!-- face-api.js: local = face-api.js-master, production = assets-stg.share-wis.com -->
     <script>
       (function() {
@@ -26,6 +26,17 @@
               FACEAPI_BASE + '/face-api.min.js'
             ]
           : [ FACEAPI_BASE + '/face-api.min.js' ];
+        
+        function waitForTfjs(callback) {
+          if (typeof tf !== 'undefined' && window.tfjsReady) {
+            console.log('✅ TensorFlow.js ready, loading face-api.js...');
+            callback();
+          } else {
+            console.log('⏳ Waiting for TensorFlow.js...');
+            setTimeout(function() { waitForTfjs(callback); }, 100);
+          }
+        }
+        
         var i = 0;
         function load() {
           if (i >= paths.length) {
@@ -35,11 +46,23 @@
           var s = document.createElement('script');
           s.src = paths[i];
           if (paths[i].indexOf('http') === 0) s.crossOrigin = 'anonymous';
-          s.onerror = function() { i++; load(); };
-          s.onload = function() { console.log('✅ face-api.js from:', paths[i]); };
+          s.onerror = function() { 
+            console.warn('⚠️ Failed to load:', paths[i]);
+            i++; 
+            load(); 
+          };
+          s.onload = function() { 
+            console.log('✅ face-api.js from:', paths[i]);
+            if (typeof faceapi !== 'undefined') {
+              console.log('✅ faceapi object available');
+            } else {
+              console.warn('⚠️ faceapi object not available after script load');
+            }
+          };
           document.head.appendChild(s);
         }
-        load();
+        
+        waitForTfjs(load);
       })();
     </script>
   </head>
