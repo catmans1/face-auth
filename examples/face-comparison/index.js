@@ -396,6 +396,7 @@ function saveDeviceInfo(info) {
   updateDeviceUI();
 }
 
+// Enable Authenticate button when user/device is registered – do not require face-api descriptors
 function updateDeviceUI() {
   if (currentApiVersion === "v2") {
     if (deviceInfo) {
@@ -408,7 +409,7 @@ function updateDeviceUI() {
       btnAuthenticate.disabled = true;
     }
   } else {
-    // v3: Enable authenticate if user is registered
+    // v3: Always enable Authenticate when user is registered (even if face-api could not get descriptor from upload)
     if (currentUserUuid) {
       btnAuthenticate.disabled = false;
     } else {
@@ -598,31 +599,22 @@ async function processUploadedImageRegister(file) {
     canvasUploadRegister.height = img.height;
     ctx.drawImage(img, 0, 0);
 
-    // Detect face locally first
+    // Detect face locally (do not block registration: even if no face / bad status, still register with Melon and enable Authenticate)
     uploadStatusRegister.textContent = "Detecting face...";
     const faces = await detectorRegister.estimateFaces(canvasUploadRegister);
 
-    if (faces.length === 0) {
-      uploadStatusRegister.textContent = "No face detected";
-      uploadStatusRegister.classList.add("error");
-      showResult(registerResult, false, "No Face Detected", {
-        Message: "Please upload an image with a clear face",
-      });
-      return false;
+    let status = mt.FaceStatus.NO_FACE;
+    if (faces.length > 0) {
+      const shape = { width: canvasUploadRegister.width, height: canvasUploadRegister.height };
+      const options = { detectorType: "mediapipe" };
+      status = mt.getFaceStatus(faces, shape, options).status;
     }
-
-    const shape = { width: canvasUploadRegister.width, height: canvasUploadRegister.height };
-    const options = { detectorType: "mediapipe" };
-    const { status, face } = mt.getFaceStatus(faces, shape, options);
-
-    if (status !== mt.FaceStatus.OK) {
-      uploadStatusRegister.textContent = `Face issue: ${mt.FaceStatus[status]}`;
+    if (faces.length === 0) {
+      uploadStatusRegister.textContent = "No face detected (registering with Melon anyway)";
       uploadStatusRegister.classList.add("warning");
-      showResult(registerResult, false, "Face Quality Issue", {
-        Status: mt.FaceStatus[status],
-        Message: "Please upload an image with better face quality",
-      });
-      return false;
+    } else if (status !== mt.FaceStatus.OK) {
+      uploadStatusRegister.textContent = `Face issue: ${mt.FaceStatus[status]} (registering with Melon anyway)`;
+      uploadStatusRegister.classList.add("warning");
     }
 
     const imageBlob = await canvasToBlob(canvasUploadRegister);
