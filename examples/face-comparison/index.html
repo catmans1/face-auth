@@ -12,43 +12,32 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
-    <!-- face-api.js from local face-api.js-master (CDN fallback for Vercel) -->
+    <!-- face-api.js: local = face-api.js-master, production = assets-stg.share-wis.com -->
     <script>
-      // Load face-api.js from face-api.js-master first, then CDN
       (function() {
-        const paths = [
-          // Local face-api.js-master (relative from examples/face-comparison/)
-          '../../face-api.js-master/dist/face-api.min.js',
-          // Local absolute (Python server from project root)
-          '/face-api.js-master/dist/face-api.min.js',
-          // CDN fallback (for Vercel when local not available)
-          'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
-        ];
-        
-        let currentPath = 0;
-        function loadScript() {
-          if (currentPath >= paths.length) {
-            console.error('❌ Failed to load face-api.js from all sources');
-            console.error('Tried:', paths);
-            alert('Error: Could not load face-api.js. Ensure face-api.js-master is built (npm run build) or check server.');
+        var isLocal = /localhost|127\.0\.0\.1|^$/.test(document.location.hostname);
+        var FACEAPI_BASE = 'https://assets-stg.share-wis.com/faceapi';
+        var paths = isLocal
+          ? [
+              '../../face-api.js-master/dist/face-api.min.js',
+              '/face-api.js-master/dist/face-api.min.js',
+              FACEAPI_BASE + '/face-api.min.js'
+            ]
+          : [ FACEAPI_BASE + '/face-api.min.js' ];
+        var i = 0;
+        function load() {
+          if (i >= paths.length) {
+            console.error('❌ Could not load face-api.js');
             return;
           }
-          
-          const script = document.createElement('script');
-          script.src = paths[currentPath];
-          if (paths[currentPath].indexOf('http') === 0) script.crossOrigin = 'anonymous';
-          script.onerror = function() {
-            console.warn('⚠️ Failed: ' + paths[currentPath] + ', trying next...');
-            currentPath++;
-            loadScript();
-          };
-          script.onload = function() {
-            console.log('✅ Loaded face-api.js from: ' + paths[currentPath]);
-          };
-          document.head.appendChild(script);
+          var s = document.createElement('script');
+          s.src = paths[i];
+          if (paths[i].indexOf('http') === 0) s.crossOrigin = 'anonymous';
+          s.onerror = function() { i++; load(); };
+          s.onload = function() { console.log('✅ face-api.js from:', paths[i]); };
+          document.head.appendChild(s);
         }
-        
-        loadScript();
+        load();
       })();
     </script>
   </head>

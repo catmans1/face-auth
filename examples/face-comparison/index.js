@@ -30,48 +30,47 @@ let melonClient = null;
 // face-api.js model URL - will try multiple paths (local first, then CDN)
 let FACE_API_MODEL_URL = "../../face-api.js-master/weights"; // Default for local development
 
+// Production: face-api assets (script and weights at same base)
+const FACEAPI_ASSETS_BASE = 'https://assets-stg.share-wis.com/faceapi';
+
 // Function to detect available model path
 async function detectModelPath() {
-  // Detect environment
-  const isLocalhost = window.location.hostname === 'localhost' || 
+  const isLocalhost = window.location.hostname === 'localhost' ||
                       window.location.hostname === '127.0.0.1' ||
                       window.location.hostname === '';
-  
-  // Get base path for relative URLs (HTML is in examples/face-comparison/)
   const basePath = window.location.pathname.split('/examples/face-comparison')[0] || '';
-  
-  // Prefer face-api.js-master weights when using local lib; then public folder; then CDN
-  const paths = [
-    // face-api.js-master weights (same repo as the lib we load)
-    "../../face-api.js-master/weights",  // Relative from examples/face-comparison/
-    "/face-api.js-master/weights",      // Absolute (Python server from project root)
-    "/public/face-api-weights",         // Public folder (local server)
-    "../../public/face-api-weights",    // Relative public folder
-    "/face-api-weights",                // Vercel (public/ served at root)
-    basePath + "/face-api-weights",
-    basePath + "/face-api.js-master/weights",
-    // CDN fallback
-    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights"
-  ];
-  
+
+  // Local: face-api.js-master, public, then FACEAPI_ASSETS_BASE. Production: assets URL only
+  const paths = isLocalhost
+    ? [
+        "../../face-api.js-master/weights",
+        "/face-api.js-master/weights",
+        "/public/face-api-weights",
+        "../../public/face-api-weights",
+        "/face-api-weights",
+        basePath + "/face-api-weights",
+        FACEAPI_ASSETS_BASE
+      ]
+    : [ FACEAPI_ASSETS_BASE ];
+
   console.log("🔍 Detecting available model path...");
-  console.log(`  Environment: ${isLocalhost ? 'Local' : 'Production (Vercel)'}`);
-  console.log(`  Base path: ${basePath || '(root)'}`);
+  console.log(`  Environment: ${isLocalhost ? 'Local' : 'Production'}`);
+  console.log(`  Paths: ${paths.join(', ')}`);
   console.log(`  Current URL: ${window.location.href}`);
-  
+
   // Try to fetch a model manifest file to test if path is accessible
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i];
     try {
       const testUrl = `${path}/face_recognition_model-weights_manifest.json`;
       console.log(`  [${i + 1}/${paths.length}] Testing: ${testUrl}`);
-      
-      const response = await fetch(testUrl, { 
-        method: 'GET', 
+
+      const response = await fetch(testUrl, {
+        method: 'GET',
         mode: 'cors',
         cache: 'no-cache'
       });
-      
+
       if (response.ok) {
         const contentType = response.headers.get('content-type');
         console.log(`✅ Model path available: ${path}`);
@@ -85,10 +84,9 @@ async function detectModelPath() {
       console.log(`   ⚠️ Error: ${e.message}`);
     }
   }
-  
-  // Default to jsDelivr GitHub CDN (best CORS support)
-  console.error("❌ All paths failed, using jsDelivr GitHub CDN as fallback");
-  return "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+
+  console.error("❌ No model path available.");
+  return null;
 }
 
 // DOM Elements - API Version
@@ -146,7 +144,7 @@ async function loadFaceApiModels() {
     await new Promise((resolve) => setTimeout(resolve, 500));
     retries--;
   }
-  
+
   if (typeof faceapi === "undefined") {
     console.error("face-api.js failed to load after retries");
     return false;
@@ -154,16 +152,20 @@ async function loadFaceApiModels() {
 
   console.log("=== face-api.js Model Loading Start ===");
   console.log("face-api.js version:", faceapi.version || "unknown");
-  
-  // Detect available model path (for Vercel compatibility)
+
+  // Detect available model path (local vs production assets URL)
   FACE_API_MODEL_URL = await detectModelPath();
+  if (!FACE_API_MODEL_URL) {
+    console.error("Cannot load face-api models: no path available.");
+    return false;
+  }
   console.log("Using model path:", FACE_API_MODEL_URL);
 
   try {
     // Load models in OFFICIAL order: detector first, then landmark, then recognition
     // (same as face-api.js examples: changeFaceDetector -> loadFaceLandmarkModel -> loadFaceRecognitionModel)
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    
+
     console.log("1/5 Loading Face Detector...");
     if (isMobile) {
       await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
@@ -172,7 +174,7 @@ async function loadFaceApiModels() {
       await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
       console.log("    Loaded SSD Mobilenet V1:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
     }
-    
+
     console.log("2/5 Loading Face Landmark Model...");
     if (isMobile) {
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
@@ -181,11 +183,11 @@ async function loadFaceApiModels() {
       await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
       console.log("    Loaded Face Landmark 68:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
     }
-    
+
     console.log("3/5 Loading Face Recognition Model...");
     await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_API_MODEL_URL);
     console.log("    Loaded:", faceapi.nets.faceRecognitionNet.isLoaded ? "Yes" : "No");
-    
+
     // 4 & 5: Load other detector/landmark for UI flexibility
     if (!isMobile) {
       console.log("4/5 Loading Tiny Face Detector (fallback)...");
@@ -198,7 +200,7 @@ async function loadFaceApiModels() {
       console.log("5/5 Loading Face Landmark 68 (fallback)...");
       await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
     }
-    
+
     // Verify models loaded (matching production pattern)
     const areModelsLoaded = () => {
       if (isMobile) {
@@ -214,9 +216,9 @@ async function loadFaceApiModels() {
         faceapi.nets.ssdMobilenetv1.isLoaded
       );
     };
-    
+
     const allLoaded = areModelsLoaded();
-    
+
     console.log("=== Model Loading Summary ===");
     console.log("Face Recognition:", faceapi.nets.faceRecognitionNet.isLoaded ? "✓" : "✗");
     if (isMobile) {
@@ -227,7 +229,7 @@ async function loadFaceApiModels() {
       console.log("SSD Mobilenet V1:", faceapi.nets.ssdMobilenetv1.isLoaded ? "✓" : "✗");
     }
     console.log("All required models loaded:", allLoaded ? "✓ YES" : "✗ NO");
-    
+
     if (allLoaded) {
       console.log("=== face-api.js Ready! ===");
       faceApiReady = true;
@@ -242,7 +244,7 @@ async function loadFaceApiModels() {
       console.error("   5. Test URL:", `${FACE_API_MODEL_URL}/face_recognition_model-weights_manifest.json`);
       return false;
     }
-    
+
   } catch (error) {
     console.error("Failed to load face-api.js models:", error);
     console.error("Error details:", error.message);
@@ -285,7 +287,7 @@ async function computeFaceDescriptor(input) {
     const w = input.width || input.videoWidth;
     const h = input.height || input.videoHeight;
     console.log("=== face-api.js Detection ===", input.constructor.name, w, "x", h);
-    
+
     // Same as official tests: SSD options + withFaceLandmarks() with NO arg (full landmark model)
     const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: FACE_API_MIN_CONFIDENCE });
     const tinyOptions = new faceapi.TinyFaceDetectorOptions({
@@ -293,14 +295,14 @@ async function computeFaceDescriptor(input) {
       scoreThreshold: FACE_API_SCORE_THRESHOLD
     });
     const options = FACE_API_USE_SSD ? ssdOptions : tinyOptions;
-    
+
     // Official pattern from face-api.js tests: detectSingleFace(input, options).withFaceLandmarks().withFaceDescriptor()
     // Do NOT pass argument to withFaceLandmarks() - use full landmark model (default)
     let detection = await faceapi
       .detectSingleFace(input, options)
       .withFaceLandmarks()
       .withFaceDescriptor();
-    
+
     if (!detection) {
       console.log("  Fallback: detectAllFaces...");
       const all = await faceapi
@@ -312,12 +314,12 @@ async function computeFaceDescriptor(input) {
         console.log("  Found", all.length, "face(s), using best");
       }
     }
-    
+
     if (detection) {
       console.log("✓ Face detected! Score:", detection.detection.score.toFixed(3));
       return detection.descriptor;
     }
-    
+
     console.warn("✗ No face detected");
     return null;
   } catch (error) {
@@ -330,13 +332,13 @@ async function computeFaceDescriptor(input) {
 function saveFaceDescriptor(uuid, descriptor) {
   const stored = localStorage.getItem("faceDescriptors");
   const descriptors = stored ? JSON.parse(stored) : [];
-  
+
   // Convert Float32Array to regular array for JSON storage
   const descriptorArray = Array.from(descriptor);
-  
+
   descriptors.push({ uuid, descriptor: descriptorArray });
   localStorage.setItem("faceDescriptors", JSON.stringify(descriptors));
-  
+
   // Update in-memory cache
   registeredFaceDescriptors = descriptors;
 }
@@ -984,14 +986,15 @@ async function authenticate() {
         const queryDescriptor = await computeFaceDescriptor(canvasAuth);
 
         if (queryDescriptor) {
+          console.log("Query descriptor:", queryDescriptor);
           const bestMatch = findBestFaceApiMatch(queryDescriptor);
 
           if (bestMatch) {
             // Return distance/similarity with detection parameters
-            const detectorInfo = FACE_API_USE_SSD 
+            const detectorInfo = FACE_API_USE_SSD
               ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
               : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-            
+
             faceApiResultData = {
               success: true,
               data: {
@@ -1003,10 +1006,10 @@ async function authenticate() {
               },
             };
           } else {
-            const detectorInfo = FACE_API_USE_SSD 
+            const detectorInfo = FACE_API_USE_SSD
               ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
               : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-            
+
             faceApiResultData = {
               success: false,
               data: {
@@ -1016,10 +1019,10 @@ async function authenticate() {
             };
           }
         } else {
-          const detectorInfo = FACE_API_USE_SSD 
+          const detectorInfo = FACE_API_USE_SSD
             ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
             : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-          
+
           faceApiResultData = {
             success: false,
             data: {
@@ -1030,10 +1033,10 @@ async function authenticate() {
         }
       } catch (error) {
         console.error("face-api.js error:", error);
-        const detectorInfo = FACE_API_USE_SSD 
+        const detectorInfo = FACE_API_USE_SSD
           ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
           : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-        
+
         faceApiResultData = {
           success: false,
           data: {
@@ -1043,10 +1046,10 @@ async function authenticate() {
         };
       }
     } else {
-      const detectorInfo = FACE_API_USE_SSD 
+      const detectorInfo = FACE_API_USE_SSD
         ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
         : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-      
+
       faceApiResultData = {
         success: false,
         data: {
@@ -1085,7 +1088,7 @@ btnAuthenticate.addEventListener("click", async () => {
     });
     return;
   }
-  
+
   if (currentApiVersion === "v3" && !currentUserUuid) {
     showResult(authResult, false, "User Not Registered", {
       Message: "Please register a user first (v3)",
@@ -1119,7 +1122,7 @@ function updateUIForApiVersion() {
   } else {
     btnRegisterDevice.style.display = "block";
   }
-  
+
   // Update info box message
   const infoBox = document.querySelector(".info-box");
   if (infoBox) {
@@ -1129,7 +1132,7 @@ function updateUIForApiVersion() {
       infoBox.innerHTML = `<strong>Note:</strong> Device registration is required only once. After that, you can authenticate multiple times.`;
     }
   }
-  
+
   // Update button states
   updateDeviceUI();
 }
@@ -1141,7 +1144,7 @@ if (apiVersionSelect) {
     initializeMelonClient();
     updateUIForApiVersion();
     console.log(`Switched to ${currentApiVersion} API`);
-    
+
     // Clear results
     authResult.innerHTML = "";
     registerResult.innerHTML = "";
@@ -1162,13 +1165,13 @@ if (apiVersionSelect) {
   } else {
     console.warn("API version select not found, using default:", currentApiVersion);
   }
-  
+
   // Initialize client with default version (v3)
   initializeMelonClient();
-  
+
   loadDeviceInfo();
   loadFaceDescriptors();
-  
+
   // Set initial UI state
   updateUIForApiVersion();
 
@@ -1213,14 +1216,14 @@ if (apiVersionSelect) {
 // Test face-api.js with the current video frame (matching production pattern)
 window.testFaceApi = async function() {
   console.log("=== Testing face-api.js (production pattern) ===");
-  
+
   if (typeof faceapi === "undefined") {
     console.error("faceapi object is undefined! Library not loaded.");
     return;
   }
-  
+
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  
+
   console.log("\n--- Model Status ---");
   console.log("Device type:", isMobile ? "Mobile" : "Desktop");
   console.log("faceRecognitionNet:", faceapi.nets.faceRecognitionNet.isLoaded);
@@ -1231,7 +1234,7 @@ window.testFaceApi = async function() {
     console.log("faceLandmark68Net:", faceapi.nets.faceLandmark68Net.isLoaded);
     console.log("ssdMobilenetv1:", faceapi.nets.ssdMobilenetv1.isLoaded);
   }
-  
+
   // Check models (matching production pattern)
   const areModelsLoaded = () => {
     if (isMobile) {
@@ -1247,15 +1250,15 @@ window.testFaceApi = async function() {
       faceapi.nets.ssdMobilenetv1.isLoaded
     );
   };
-  
+
   if (!areModelsLoaded()) {
     console.error("Required models not loaded!");
     return;
   }
-  
+
   console.log("\n--- Test 1: Production pattern (with device-specific options) ---");
   console.log("Video dimensions:", videoAuth.videoWidth, "x", videoAuth.videoHeight);
-  
+
   try {
     // Match production pattern exactly
     const getFaceDetectorOptions = () => {
@@ -1264,12 +1267,12 @@ window.testFaceApi = async function() {
       }
       return new faceapi.SsdMobilenetv1Options();
     };
-    
+
     const detection = await faceapi
       .detectSingleFace(videoAuth, getFaceDetectorOptions())
       .withFaceLandmarks(isMobile)  // Pass boolean for mobile
       .withFaceDescriptor();
-    
+
     if (detection) {
       console.log("✓ SUCCESS! Face detected");
       console.log("  Score:", detection.detection.score.toFixed(4));
@@ -1282,14 +1285,14 @@ window.testFaceApi = async function() {
     console.error("Error:", e.message);
     console.error("Stack:", e.stack);
   }
-  
+
   console.log("\n--- Test 2: With explicit SSD options (minConfidence: 0.1) ---");
   try {
     const detection = await faceapi
       .detectSingleFace(videoAuth, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 }))
       .withFaceLandmarks(false)
       .withFaceDescriptor();
-    
+
     if (detection) {
       console.log("✓ SUCCESS! Face detected");
       console.log("  Score:", detection.detection.score.toFixed(4));
@@ -1299,7 +1302,7 @@ window.testFaceApi = async function() {
   } catch (e) {
     console.error("Error:", e.message);
   }
-  
+
   console.log("\n--- Test 3: Just detection (no landmarks) ---");
   try {
     const detection = await faceapi.detectSingleFace(videoAuth, getFaceDetectorOptions());
@@ -1311,7 +1314,7 @@ window.testFaceApi = async function() {
   } catch (e) {
     console.error("Error:", e.message);
   }
-  
+
   console.log("\n=== Test Complete ===");
 };
 
@@ -1344,7 +1347,7 @@ window.testModelPath = async function() {
     "../../face-api-weights",
     "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights"
   ];
-  
+
   for (const path of paths) {
     const testUrl = `${path}/face_recognition_model-weights_manifest.json`;
     console.log(`\nTesting: ${testUrl}`);
