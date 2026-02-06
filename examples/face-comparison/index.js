@@ -297,7 +297,11 @@ async function computeFaceDescriptor(input) {
   console.log("🔍 computeFaceDescriptor called:", {
     faceApiReady,
     inputType: input?.constructor?.name,
-    hasFaceApi: typeof faceapi !== "undefined"
+    hasFaceApi: typeof faceapi !== "undefined",
+    inputWidth: input?.width,
+    inputHeight: input?.height,
+    inputVideoWidth: input?.videoWidth,
+    inputVideoHeight: input?.videoHeight
   });
   
   if (!faceApiReady) {
@@ -314,6 +318,17 @@ async function computeFaceDescriptor(input) {
     const w = input.width || input.videoWidth;
     const h = input.height || input.videoHeight;
     console.log("=== face-api.js Detection ===", input.constructor.name, w, "x", h);
+    
+    // Verify canvas has data
+    if (input instanceof HTMLCanvasElement) {
+      const ctx = input.getContext("2d");
+      const testData = ctx.getImageData(0, 0, Math.min(w, 10), Math.min(h, 10));
+      const hasPixels = testData.data.some(p => p !== 0);
+      console.log("🔍 Canvas pixel check:", hasPixels ? "Has data" : "Empty/blank");
+      if (!hasPixels) {
+        console.warn("⚠️ Canvas appears to be empty - video frame may not be captured");
+      }
+    }
 
     // Same as official tests: SSD options + withFaceLandmarks() with NO arg (full landmark model)
     const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: FACE_API_MIN_CONFIDENCE });
@@ -959,7 +974,27 @@ async function authenticate() {
   let faceApiResultData = { success: false, data: {} };
 
   try {
+    // Verify video is ready before capturing
+    console.log("🔍 Video state:", {
+      videoWidth: videoAuth.videoWidth,
+      videoHeight: videoAuth.videoHeight,
+      readyState: videoAuth.readyState,
+      paused: videoAuth.paused,
+      ended: videoAuth.ended
+    });
+    
     const imageBlob = await captureImage(videoAuth, canvasAuth);
+    console.log("🔍 Canvas state after capture:", {
+      canvasWidth: canvasAuth.width,
+      canvasHeight: canvasAuth.height,
+      imageBlobSize: imageBlob?.size
+    });
+    
+    // Verify canvas has data by checking if we can read pixels
+    const ctx = canvasAuth.getContext("2d");
+    const imageData = ctx.getImageData(0, 0, Math.min(canvasAuth.width, 10), Math.min(canvasAuth.height, 10));
+    const hasData = imageData.data.some(pixel => pixel !== 0);
+    console.log("🔍 Canvas has image data:", hasData);
 
     // =====================================================
     // Melon API Authentication (v2 or v3)
