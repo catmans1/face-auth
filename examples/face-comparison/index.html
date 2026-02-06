@@ -12,17 +12,17 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
-    <!-- face-api.js library - using CDN for Vercel compatibility -->
-    <!-- Models will still be loaded from local weights folder -->
+    <!-- face-api.js from local face-api.js-master (CDN fallback for Vercel) -->
     <script>
-      // Load face-api.js with CDN fallback for Vercel deployment
+      // Load face-api.js from face-api.js-master first, then CDN
       (function() {
         const paths = [
-          // Try CDN first (works on Vercel)
-          'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',
-          // Fallback to local if CDN fails (for local development)
+          // Local face-api.js-master (relative from examples/face-comparison/)
+          '../../face-api.js-master/dist/face-api.min.js',
+          // Local absolute (Python server from project root)
           '/face-api.js-master/dist/face-api.min.js',
-          '../../face-api.js-master/dist/face-api.min.js'
+          // CDN fallback (for Vercel when local not available)
+          'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
         ];
         
         let currentPath = 0;
@@ -30,20 +30,20 @@
           if (currentPath >= paths.length) {
             console.error('❌ Failed to load face-api.js from all sources');
             console.error('Tried:', paths);
-            alert('Error: Could not load face-api.js library. Please check your internet connection or server configuration.');
+            alert('Error: Could not load face-api.js. Ensure face-api.js-master is built (npm run build) or check server.');
             return;
           }
           
           const script = document.createElement('script');
           script.src = paths[currentPath];
-          script.crossOrigin = 'anonymous'; // For CDN
+          if (paths[currentPath].indexOf('http') === 0) script.crossOrigin = 'anonymous';
           script.onerror = function() {
-            console.warn(`⚠️ Failed: ${paths[currentPath]}, trying next...`);
+            console.warn('⚠️ Failed: ' + paths[currentPath] + ', trying next...');
             currentPath++;
             loadScript();
           };
           script.onload = function() {
-            console.log(`✅ Loaded face-api.js from: ${paths[currentPath]}`);
+            console.log('✅ Loaded face-api.js from: ' + paths[currentPath]);
           };
           document.head.appendChild(script);
         }
@@ -146,14 +146,14 @@
           <!-- face-api.js Min Confidence Control (for SSD) -->
           <div class="threshold-control" id="ssd-controls">
             <label for="min-confidence-slider">
-              Min Confidence: <span id="min-confidence-value">0.5</span>
+              Min Confidence: <span id="min-confidence-value">0.3</span>
             </label>
             <input
               type="range"
               id="min-confidence-slider"
               min="0.1"
               max="0.9"
-              value="0.5"
+              value="0.3"
               step="0.1"
             />
             <div class="threshold-labels">

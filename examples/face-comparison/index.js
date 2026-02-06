@@ -40,20 +40,18 @@ async function detectModelPath() {
   // Get base path for relative URLs (HTML is in examples/face-comparison/)
   const basePath = window.location.pathname.split('/examples/face-comparison')[0] || '';
   
-  // Try multiple paths - absolute paths work better on Vercel
+  // Prefer face-api.js-master weights when using local lib; then public folder; then CDN
   const paths = [
-    // Absolute paths (work on Vercel)
-    "/face-api-weights",                 // Public folder - absolute from root
-    basePath + "/face-api-weights",      // With base path if needed
-    
-    // Relative paths (for local dev)
-    "../../face-api-weights",            // Relative from examples/face-comparison/
-    "../../face-api.js-master/weights",  // Original location (local dev)
-    "/face-api.js-master/weights",       // Absolute original location
-    
-    // CDN fallbacks
-    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights",  // jsDelivr GitHub CDN
-    "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"  // GitHub raw CDN
+    // face-api.js-master weights (same repo as the lib we load)
+    "../../face-api.js-master/weights",  // Relative from examples/face-comparison/
+    "/face-api.js-master/weights",      // Absolute (Python server from project root)
+    "/public/face-api-weights",         // Public folder (local server)
+    "../../public/face-api-weights",    // Relative public folder
+    "/face-api-weights",                // Vercel (public/ served at root)
+    basePath + "/face-api-weights",
+    basePath + "/face-api.js-master/weights",
+    // CDN fallback
+    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights"
   ];
   
   console.log("🔍 Detecting available model path...");
@@ -162,50 +160,43 @@ async function loadFaceApiModels() {
   console.log("Using model path:", FACE_API_MODEL_URL);
 
   try {
-    // Load models in the same order as production code
-    // 1. Face Recognition Net FIRST (as per production)
-    console.log("1/5 Loading Face Recognition Model...");
+    // Load models in OFFICIAL order: detector first, then landmark, then recognition
+    // (same as face-api.js examples: changeFaceDetector -> loadFaceLandmarkModel -> loadFaceRecognitionModel)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    console.log("1/5 Loading Face Detector...");
+    if (isMobile) {
+      await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded Tiny Face Detector:", faceapi.nets.tinyFaceDetector.isLoaded ? "Yes" : "No");
+    } else {
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded SSD Mobilenet V1:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
+    }
+    
+    console.log("2/5 Loading Face Landmark Model...");
+    if (isMobile) {
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded Face Landmark 68 Tiny:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "Yes" : "No");
+    } else {
+      await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
+      console.log("    Loaded Face Landmark 68:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
+    }
+    
+    console.log("3/5 Loading Face Recognition Model...");
     await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_API_MODEL_URL);
     console.log("    Loaded:", faceapi.nets.faceRecognitionNet.isLoaded ? "Yes" : "No");
     
-    // 2. Load detector and landmark models based on device type
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-      console.log("2/5 Loading Face Landmark 68 Tiny Model (Mobile)...");
-      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "Yes" : "No");
-      
-      console.log("3/5 Loading Tiny Face Detector (Mobile)...");
-      await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.tinyFaceDetector.isLoaded ? "Yes" : "No");
-    } else {
-      console.log("2/5 Loading Face Landmark 68 Model (Desktop)...");
-      await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
-      
-      console.log("3/5 Loading SSD Mobilenet V1 (Desktop)...");
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
-    }
-    
-    // 4. Load the other detector for flexibility
+    // 4 & 5: Load other detector/landmark for UI flexibility
     if (!isMobile) {
-      console.log("4/5 Loading Tiny Face Detector (for fallback)...");
+      console.log("4/5 Loading Tiny Face Detector (fallback)...");
       await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.tinyFaceDetector.isLoaded ? "Yes" : "No");
-      
-      console.log("5/5 Loading Face Landmark 68 Tiny Model (for fallback)...");
+      console.log("5/5 Loading Face Landmark 68 Tiny (fallback)...");
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.faceLandmark68TinyNet.isLoaded ? "Yes" : "No");
     } else {
-      console.log("4/5 Loading SSD Mobilenet V1 (for fallback)...");
+      console.log("4/5 Loading SSD Mobilenet V1 (fallback)...");
       await faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.ssdMobilenetv1.isLoaded ? "Yes" : "No");
-      
-      console.log("5/5 Loading Face Landmark 68 Model (for fallback)...");
+      console.log("5/5 Loading Face Landmark 68 (fallback)...");
       await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL);
-      console.log("    Loaded:", faceapi.nets.faceLandmark68Net.isLoaded ? "Yes" : "No");
     }
     
     // Verify models loaded (matching production pattern)
@@ -268,7 +259,7 @@ async function loadFaceApiModels() {
 // face-api.js Detection options (adjustable via UI)
 let FACE_API_INPUT_SIZE = 512; // For TinyFaceDetector (options: 128, 160, 224, 320, 416, 512, 608)
 let FACE_API_SCORE_THRESHOLD = 0.3; // For TinyFaceDetector (range: 0-1)
-let FACE_API_MIN_CONFIDENCE = 0.5; // For SsdMobilenetv1 (range: 0-1)
+let FACE_API_MIN_CONFIDENCE = 0.3; // For SsdMobilenetv1 - use 0.3 for better detection
 let FACE_API_USE_SSD = true; // Use SsdMobilenetv1 (more reliable) or TinyFaceDetector
 
 // DOM Elements - face-api.js Detection Controls
@@ -283,8 +274,7 @@ const inputSizeValue = document.getElementById("input-size-value");
 const scoreThresholdSlider = document.getElementById("score-threshold-slider");
 const scoreThresholdValue = document.getElementById("score-threshold-value");
 
-// Compute face descriptor using face-api.js
-// Following the production code pattern exactly
+// Compute face descriptor using face-api.js (matches official examples + tests)
 async function computeFaceDescriptor(input) {
   if (!faceApiReady) {
     console.warn("face-api.js not ready");
@@ -292,84 +282,46 @@ async function computeFaceDescriptor(input) {
   }
 
   try {
-    const inputWidth = input.width || input.videoWidth;
-    const inputHeight = input.height || input.videoHeight;
-    console.log("=== face-api.js Detection Start ===");
-    console.log("Input type:", input.constructor.name);
-    console.log("Input dimensions:", inputWidth, "x", inputHeight);
+    const w = input.width || input.videoWidth;
+    const h = input.height || input.videoHeight;
+    console.log("=== face-api.js Detection ===", input.constructor.name, w, "x", h);
     
-    // Match production code pattern exactly
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    // Same as official tests: SSD options + withFaceLandmarks() with NO arg (full landmark model)
+    const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: FACE_API_MIN_CONFIDENCE });
+    const tinyOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: FACE_API_INPUT_SIZE,
+      scoreThreshold: FACE_API_SCORE_THRESHOLD
+    });
+    const options = FACE_API_USE_SSD ? ssdOptions : tinyOptions;
     
-    // Get detector options (matching production getFaceDetectorOptions)
-    const getFaceDetectorOptions = () => {
-      if (isMobile) {
-        // For mobile, use TinyFaceDetector with default options (or user's scoreThreshold)
-        return new faceapi.TinyFaceDetectorOptions({
-          scoreThreshold: FACE_API_SCORE_THRESHOLD
-        });
-      }
-      // For desktop, use SSD with user's minConfidence
-      return new faceapi.SsdMobilenetv1Options({
-        minConfidence: FACE_API_MIN_CONFIDENCE
-      });
-    };
-    
-    // Use user's detector preference if set, otherwise auto-detect
-    let detectorOptions;
-    if (FACE_API_USE_SSD !== undefined && !FACE_API_USE_SSD) {
-      // User explicitly wants TinyFaceDetector
-      detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: FACE_API_INPUT_SIZE,
-        scoreThreshold: FACE_API_SCORE_THRESHOLD
-      });
-    } else if (FACE_API_USE_SSD !== undefined && FACE_API_USE_SSD) {
-      // User explicitly wants SSD
-      detectorOptions = new faceapi.SsdMobilenetv1Options({
-        minConfidence: FACE_API_MIN_CONFIDENCE
-      });
-    } else {
-      // Auto-detect based on device
-      detectorOptions = getFaceDetectorOptions();
-    }
-    
-    console.log("Detector:", detectorOptions instanceof faceapi.SsdMobilenetv1Options ? "SsdMobilenetv1" : "TinyFaceDetector");
-    console.log("Options:", JSON.stringify(detectorOptions));
-    
-    // Match production pattern exactly:
-    // const detection = await faceapi
-    //   .detectSingleFace(img, this.getFaceDetectorOptions())
-    //   .withFaceLandmarks(this.isMobile)
-    //   .withFaceDescriptor();
-    const detection = await faceapi
-      .detectSingleFace(input, detectorOptions)
-      .withFaceLandmarks(isMobile)  // Pass boolean for mobile (true = use tiny model)
+    // Official pattern from face-api.js tests: detectSingleFace(input, options).withFaceLandmarks().withFaceDescriptor()
+    // Do NOT pass argument to withFaceLandmarks() - use full landmark model (default)
+    let detection = await faceapi
+      .detectSingleFace(input, options)
+      .withFaceLandmarks()
       .withFaceDescriptor();
     
-    // Check if face was detected (as per docs: "If no face is detected, the detection object will be undefined")
+    if (!detection) {
+      console.log("  Fallback: detectAllFaces...");
+      const all = await faceapi
+        .detectAllFaces(input, options)
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+      if (all && all.length > 0) {
+        detection = all.reduce((a, b) => (a.detection.score > b.detection.score ? a : b));
+        console.log("  Found", all.length, "face(s), using best");
+      }
+    }
+    
     if (detection) {
-      console.log("✓ Face detected!");
-      console.log("  Score:", detection.detection.score.toFixed(4));
-      console.log("  Box:", JSON.stringify({
-        x: Math.round(detection.detection.box.x),
-        y: Math.round(detection.detection.box.y),
-        width: Math.round(detection.detection.box.width),
-        height: Math.round(detection.detection.box.height)
-      }));
-      console.log("  Landmarks:", detection.landmarks.positions.length, "points");
-      console.log("  Descriptor length:", detection.descriptor.length);
-      console.log("=== face-api.js Detection SUCCESS ===");
+      console.log("✓ Face detected! Score:", detection.detection.score.toFixed(3));
       return detection.descriptor;
     }
     
     console.warn("✗ No face detected");
-    console.log("=== face-api.js Detection FAILED ===");
     return null;
-    
   } catch (error) {
     console.error("face-api.js error:", error.message);
-    console.error("Stack:", error.stack);
-    console.log("=== face-api.js Detection ERROR ===");
     return null;
   }
 }
