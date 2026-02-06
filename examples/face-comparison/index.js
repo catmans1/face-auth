@@ -1,6 +1,6 @@
 import "https://cdn.jsdelivr.net/npm/@mediapipe/face_detection";
-import "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core";
-import "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl";
+// TensorFlow.js 1.7.0 is loaded via script tag in HTML (for face-api.js compatibility)
+// Backend and face-detection model can use the global tf from the script tag
 import "https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection";
 import "../../dist/get_face_status.js";
 
@@ -354,18 +354,29 @@ function loadFaceDescriptors() {
 
 // Find best match using face-api.js
 function findBestFaceApiMatch(queryDescriptor) {
+  console.log("🔍 findBestFaceApiMatch called:", {
+    hasQueryDescriptor: !!queryDescriptor,
+    queryDescriptorLength: queryDescriptor?.length,
+    registeredFaceDescriptorsCount: registeredFaceDescriptors.length
+  });
+  
   if (!queryDescriptor || registeredFaceDescriptors.length === 0) {
+    console.log("⚠️ findBestFaceApiMatch returning null:", {
+      reason: !queryDescriptor ? "no query descriptor" : "no registered descriptors"
+    });
     return null;
   }
 
   let bestMatch = null;
   let bestDistance = Infinity;
 
+  console.log(`🔍 Comparing against ${registeredFaceDescriptors.length} registered face(s)...`);
   for (const registered of registeredFaceDescriptors) {
     const distance = faceapi.euclideanDistance(
       queryDescriptor,
       new Float32Array(registered.descriptor)
     );
+    console.log(`  UUID ${registered.uuid}: distance = ${distance.toFixed(4)}`);
 
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -377,6 +388,12 @@ function findBestFaceApiMatch(queryDescriptor) {
     }
   }
 
+  console.log("✅ findBestFaceApiMatch result:", bestMatch ? {
+    uuid: bestMatch.uuid,
+    distance: bestMatch.distance.toFixed(4),
+    similarity: (bestMatch.similarity * 100).toFixed(2) + "%"
+  } : "no match found");
+  
   return bestMatch;
 }
 
@@ -981,13 +998,20 @@ async function authenticate() {
     // face-api.js Authentication (returns distance only, no threshold check)
     // =====================================================
     statusAuth.textContent = "Authenticating with face-api.js...";
+    console.log("🔍 face-api auth check:", {
+      faceApiReady,
+      registeredFaceDescriptorsCount: registeredFaceDescriptors.length,
+      willCallFindBestMatch: faceApiReady && registeredFaceDescriptors.length > 0
+    });
     if (faceApiReady && registeredFaceDescriptors.length > 0) {
       try {
         const queryDescriptor = await computeFaceDescriptor(canvasAuth);
+        console.log("🔍 Query descriptor result:", queryDescriptor ? "Got descriptor" : "null/undefined");
 
         if (queryDescriptor) {
-          console.log("Query descriptor:", queryDescriptor);
+          console.log("✅ Calling findBestFaceApiMatch with descriptor length:", queryDescriptor.length);
           const bestMatch = findBestFaceApiMatch(queryDescriptor);
+          console.log("🔍 findBestFaceApiMatch result:", bestMatch);
 
           if (bestMatch) {
             // Return distance/similarity with detection parameters
@@ -1046,10 +1070,15 @@ async function authenticate() {
         };
       }
     } else {
-      const detectorInfo = FACE_API_USE_SSD
+      console.log("⚠️ Skipping face-api auth:", {
+        faceApiReady,
+        registeredFaceDescriptorsCount: registeredFaceDescriptors.length,
+        reason: !faceApiReady ? "face-api models not loaded" : "no registered face descriptors"
+      });
+      const detectorInfo = FACE_API_USE_SSD 
         ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
         : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
-
+      
       faceApiResultData = {
         success: false,
         data: {
