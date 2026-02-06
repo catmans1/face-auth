@@ -321,12 +321,25 @@ async function computeFaceDescriptor(input) {
     
     // Verify canvas has data
     if (input instanceof HTMLCanvasElement) {
-      const ctx = input.getContext("2d");
+      const ctx = input.getContext("2d", { willReadFrequently: true });
       const testData = ctx.getImageData(0, 0, Math.min(w, 10), Math.min(h, 10));
       const hasPixels = testData.data.some(p => p !== 0);
       console.log("🔍 Canvas pixel check:", hasPixels ? "Has data" : "Empty/blank");
       if (!hasPixels) {
-        console.warn("⚠️ Canvas appears to be empty - video frame may not be captured");
+        console.warn("⚠️ Canvas appears to be empty - trying to use video directly");
+        // If canvas is empty but we have videoAuth, try using video directly
+        const videoFallback = window._lastVideoAuth || document.getElementById("video-auth");
+        if (videoFallback && videoFallback.readyState >= 2) {
+          console.log("🔄 Falling back to videoAuth for face detection");
+          console.log("🔄 Video state:", {
+            width: videoFallback.videoWidth,
+            height: videoFallback.videoHeight,
+            readyState: videoFallback.readyState
+          });
+          input = videoFallback;
+        } else {
+          console.warn("⚠️ Video fallback not available");
+        }
       }
     }
 
@@ -555,13 +568,19 @@ function updateStatus(statusElement, status, faceStatus) {
 }
 
 function captureImage(video, canvas) {
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0);
+  
+  // Verify canvas has data before returning
+  const testData = ctx.getImageData(0, 0, Math.min(canvas.width, 10), Math.min(canvas.height, 10));
+  const hasData = testData.data.some(p => p !== 0);
+  console.log("🔍 captureImage: canvas has data:", hasData, "dimensions:", canvas.width, "x", canvas.height);
 
   return new Promise((resolve) => {
     canvas.toBlob((blob) => {
+      console.log("🔍 captureImage: blob created, size:", blob?.size);
       resolve(blob);
     }, "image/jpeg", 0.95);
   });
@@ -991,10 +1010,23 @@ async function authenticate() {
     });
     
     // Verify canvas has data by checking if we can read pixels
-    const ctx = canvasAuth.getContext("2d");
+    const ctx = canvasAuth.getContext("2d", { willReadFrequently: true });
     const imageData = ctx.getImageData(0, 0, Math.min(canvasAuth.width, 10), Math.min(canvasAuth.height, 10));
     const hasData = imageData.data.some(pixel => pixel !== 0);
     console.log("🔍 Canvas has image data:", hasData);
+    
+    // If canvas appears empty but blob has data, redraw the video frame
+    if (!hasData && imageBlob && imageBlob.size > 0) {
+      console.warn("⚠️ Canvas appears empty but blob exists - redrawing video frame");
+      ctx.drawImage(videoAuth, 0, 0);
+      // Verify again
+      const retryData = ctx.getImageData(0, 0, Math.min(canvasAuth.width, 10), Math.min(canvasAuth.height, 10));
+      const retryHasData = retryData.data.some(p => p !== 0);
+      console.log("🔍 After redraw, canvas has data:", retryHasData);
+    }
+    
+    // Store video reference for face-api fallback if canvas fails
+    window._lastVideoAuth = videoAuth;
 
     // =====================================================
     // Melon API Authentication (v2 or v3)
