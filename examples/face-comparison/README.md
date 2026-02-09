@@ -24,6 +24,8 @@ This demo showcases the integration of Melon Face Recognition API with the get-f
 
 ## Running the Demo
 
+**Build before run (for production):** From the repo root, run `npm run build` to copy the demo (including `images/instructor.png`) into `public/`. Then serve the `public/` folder or deploy it. The instruction image lives in `examples/face-comparison/images/instructor.png` and is loaded relative to the page.
+
 ### Option 1: Using the provided script
 
 ```bash

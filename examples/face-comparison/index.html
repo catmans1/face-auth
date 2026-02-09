@@ -90,6 +90,20 @@
             <h2 class="panel-title">Face Registration</h2>
           </div>
 
+          <!-- Face image instructions (Melon API criteria - avoid TOO_MANY_UNUSABLE_IMAGES) -->
+          <div class="upload-instructions" style="margin-bottom: 1rem; text-align: center;">
+            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+              Your face image must fit the space criteria. Please follow the guide below:
+            </p>
+            <img
+              id="instructor-image"
+              src="images/instructor.png"
+              alt="Face photo instructions - fit your face in the frame"
+              class="instructor-image"
+              style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color, #333);"
+            />
+          </div>
+
           <!-- Upload Input -->
           <div id="upload-container-register" class="upload-area">
             <input
