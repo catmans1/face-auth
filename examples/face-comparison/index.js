@@ -346,7 +346,6 @@ async function computeFaceDescriptor(input) {
     // Same as official tests: SSD options + withFaceLandmarks() with NO arg (full landmark model)
     const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: FACE_API_MIN_CONFIDENCE });
     const tinyOptions = new faceapi.TinyFaceDetectorOptions({
-      inputSize: FACE_API_INPUT_SIZE,
       scoreThreshold: FACE_API_SCORE_THRESHOLD
     });
     const options = FACE_API_USE_SSD ? ssdOptions : tinyOptions;
@@ -878,12 +877,14 @@ minConfidenceSlider.addEventListener("input", (e) => {
   minConfidenceValue.textContent = value.toFixed(1);
 });
 
-// Input Size (for TinyFaceDetector)
-inputSizeSlider.addEventListener("input", (e) => {
-  const value = parseInt(e.target.value);
-  FACE_API_INPUT_SIZE = value;
-  inputSizeValue.textContent = value;
-});
+// Input Size (for TinyFaceDetector) - UI hidden; fixed 512 in TinyFaceDetectorOptions
+if (inputSizeSlider) {
+  inputSizeSlider.addEventListener("input", (e) => {
+    const value = parseInt(e.target.value);
+    FACE_API_INPUT_SIZE = value;
+    if (inputSizeValue) inputSizeValue.textContent = value;
+  });
+}
 
 // Score Threshold (for TinyFaceDetector)
 scoreThresholdSlider.addEventListener("input", (e) => {
@@ -1117,7 +1118,7 @@ async function authenticate() {
             // Return distance/similarity with detection parameters
             const detectorInfo = FACE_API_USE_SSD
               ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
-              : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+              : { "Detector": "TinyFaceDetector", "Score Threshold": FACE_API_SCORE_THRESHOLD };
 
             faceApiResultData = {
               success: true,
@@ -1132,7 +1133,7 @@ async function authenticate() {
           } else {
             const detectorInfo = FACE_API_USE_SSD
               ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
-              : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+              : { "Detector": "TinyFaceDetector", "Score Threshold": FACE_API_SCORE_THRESHOLD };
 
             faceApiResultData = {
               success: false,
@@ -1145,7 +1146,7 @@ async function authenticate() {
         } else {
           const detectorInfo = FACE_API_USE_SSD
             ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
-            : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+            : { "Detector": "TinyFaceDetector", "Score Threshold": FACE_API_SCORE_THRESHOLD };
 
           faceApiResultData = {
             success: false,
@@ -1159,7 +1160,7 @@ async function authenticate() {
         console.error("face-api.js error:", error);
         const detectorInfo = FACE_API_USE_SSD
           ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
-          : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+          : { "Detector": "TinyFaceDetector", "Score Threshold": FACE_API_SCORE_THRESHOLD };
 
         faceApiResultData = {
           success: false,
@@ -1177,7 +1178,7 @@ async function authenticate() {
       });
       const detectorInfo = FACE_API_USE_SSD 
         ? { "Detector": "SsdMobilenetv1", "Min Confidence": FACE_API_MIN_CONFIDENCE }
-        : { "Detector": "TinyFaceDetector", "Input Size": FACE_API_INPUT_SIZE, "Score Threshold": FACE_API_SCORE_THRESHOLD };
+        : { "Detector": "TinyFaceDetector", "Score Threshold": FACE_API_SCORE_THRESHOLD };
       
       faceApiResultData = {
         success: false,

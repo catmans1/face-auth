@@ -179,6 +179,7 @@
             <label for="min-confidence-slider">
               Min Confidence: <span id="min-confidence-value">0.3</span>
             </label>
+            <p class="param-explanation" lang="ja">face-api.js の顔検知の精度を変更できます。値が小さいと顔を検出しやすくなり（誤検知が増えます）、値を大きくすると顔を厳密に検知するようになるので、AUTHENTICATEボタンをクリックした後に "Could not detect face" （顔を検出できませんでした）のエラーが発生しやすくなります。</p>
             <input
               type="range"
               id="min-confidence-slider"
@@ -194,27 +195,12 @@
             </div>
           </div>
 
-          <!-- face-api.js Input Size Control (for TinyFaceDetector) -->
+          <!-- face-api.js TinyFaceDetector (Input Size hidden; fixed 512 in code) -->
           <div class="threshold-control" id="tiny-controls" style="display: none;">
-            <label for="input-size-slider">
-              Input Size: <span id="input-size-value">512</span>
-            </label>
-            <input
-              type="range"
-              id="input-size-slider"
-              min="128"
-              max="608"
-              value="512"
-              step="32"
-            />
-            <div class="threshold-labels">
-              <span>128 (Fast)</span>
-              <span>320</span>
-              <span>608 (Accurate)</span>
-            </div>
-            <label for="score-threshold-slider" style="margin-top: 1rem;">
+            <label for="score-threshold-slider">
               Score Threshold: <span id="score-threshold-value">0.3</span>
             </label>
+            <p class="param-explanation" lang="ja">face-api.js の顔検知の精度を変更できます。値が小さいと顔を検出しやすくなり（誤検知が増えます）、値を大きくすると顔を厳密に検知するようになるので、AUTHENTICATEボタンをクリックした後に "Could not detect face" （顔を検出できませんでした）のエラーが発生しやすくなります。</p>
             <input
               type="range"
               id="score-threshold-slider"
