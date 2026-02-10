@@ -164,7 +164,10 @@
 
           <!-- face-api.js Detector Selection -->
           <div class="threshold-control">
-            <label>Face Detector:</label>
+            <label>Face Detector Model for face-api.js:</label>
+            <p class="detector-explanation">
+              face-api.js で利用する顔検知のモデルを選択してください（MelonさんのAPIはモデルが1種類のみなので選択する必要はありません）。SSdMobilenetv1はPCで顔認証を行うときに利用しているモデルで正確な分、少し動作が重いです。TinyFaceDetectorはモバイルで顔認証を行うときに利用しているモデルで動作が早い分、精度が少しさがります。
+            </p>
             <div class="detector-toggle">
               <button id="btn-ssd" class="mode-btn active">SsdMobilenetv1 (Accurate)</button>
               <button id="btn-tiny" class="mode-btn">TinyFaceDetector (Fast)</button>

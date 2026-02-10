@@ -512,6 +512,13 @@ video, canvas {
   margin-top: 0.5rem;
 }
 
+.detector-explanation {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0.5rem 0 0.75rem 0;
+  line-height: 1.5;
+}
+
 .detector-toggle .mode-btn {
   flex: 1;
   padding: 0.75rem 1rem;
